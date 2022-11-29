@@ -1,0 +1,935 @@
+---
+title: "Data Management of DEPP cohort Evalaide - Composite covariate creation"
+author:
+  - Pauline Martinot [UNICOG, NeuroSpin]
+  - Bénédicte Colnet [Inria, Paris-Saclay]
+date: "July 2021"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    number_sections: no
+    toc: yes
+    toc_depth: 2
+abstract: | 
+  This notebook concerns data from National assessment in 1st and 2nd grade in France : Composite covariate creation. This notebook comes after the preprocessing notebook, and create all the composite covariates, along with normalization of grades, and creation of the rank covariates. The input can be either an imputed data set, or a data set filtered from the missing values as detailed in preprocess.
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(warning = FALSE, echo = TRUE)
+
+# Parameters to set before launch of the pipeline
+IMPUTED =  "imputed"#"non-imputed" - allows to launch the same pipeline but for each data sources
+NAOMIT = "True" # "False" 
+
+## Warning if "Non-imputed" for sensitivity analysis = make sure to add na.rm = TRUE when applying mean to T1, T2, T3 language and math # Creating composed variable
+
+ANNEE_COHORTE = 2019 #2019 #2020
+
+# Library
+library(dplyr) # case_when function, and others
+library(ggplot2)
+library(reshape2) # melt()
+
+```
+
+```{r include=FALSE}
+
+# Data
+load(paste0("./data/cohort_", ANNEE_COHORTE, "_after_1_preprocess.RData"))
+
+SEUIL_INF_CLASS = 5
+```
+
+
+```{r}
+if(IMPUTED == "non-imputed"){
+  if(NAOMIT == "True"){
+  rm(data_depp_imputed)
+  data_depp <- na.omit(data_depp)
+  } else if (NAOMIT == "False"){
+  rm(data_depp_imputed)
+    }
+}
+
+if(IMPUTED == "imputed"){
+  data_depp <- data_depp_imputed
+  rm(data_depp_imputed)
+} 
+
+```
+
+# Correct IPS when taking the imputed data
+
+When imputing, the imputation process imputes with several values of IPS per class. We correct this taking the average.
+
+```{r}
+if(IMPUTED == "imputed"){
+  IPS_summarized <- data_depp[, c("ID_etab_class", "IPS_Etab_CP")] %>% 
+    group_by(ID_etab_class) %>%
+     summarise_at(vars(IPS_Etab_CP), list(IPS_Etab_CP = mean, sd = sd)) 
+  
+  
+  data_depp <- subset(data_depp, select = -IPS_Etab_CP)
+  
+  data_depp <- merge(data_depp, IPS_summarized, by = "ID_etab_class")
+  
+  rm(IPS_summarized)
+}
+```
+
+
+```{r}
+summary(data_depp$T1_Manip_Phon)
+hist(data_depp$T1_Manip_Phon)
+
+
+data_depp$T1_Manip_Phono_Q <- cut(data_depp$T1_Manip_Phon, quantile(data_depp$T1_Manip_Phon, probs = 0:5/5, na.rm = T))
+
+table(data_depp$T1_Manip_Phono_Q)
+
+  for (i in c("T1_Manip_Phon")){
+    data_depp[[paste0(i, "_P")]] <- (data_depp[[i]]  / (max(data_depp[, i], na.rm = TRUE)))*100
+  }
+
+data_depp$T1_Manip_Phon_PP <- (data_depp$T1_Manip_Phon / 15)*100
+ 
+summary(data_depp$T1_Manip_Phon_PP)
+hist(data_depp$T1_Manip_Phon_PP)
+
+data_depp
+
+```
+
+
+```{r}
+dim(data_depp)
+```
+
+
+# Create subcategories in category
+
+First compute the median to prepare subcategories.
+
+```{r}
+# Compute medians of each category
+median_prive_1 <- median(data_depp$IPS_Etab_CP[which(data_depp$Categ_Etab_CP == "Private")]) 
+median_public_1 <- median(data_depp$IPS_Etab_CP[which(data_depp$Categ_Etab_CP == "Public")]) 
+median_rep_1 <- median(data_depp$IPS_Etab_CP[which(data_depp$Categ_Etab_CP == "REP")])
+median_repplus_1 <- median(data_depp$IPS_Etab_CP[which(data_depp$Categ_Etab_CP == "REP+")]) 
+# divide Public sector in 4 pieces (because this category is more diversed)
+quartiles_public_1 <- quantile(data_depp[data_depp$Categ_Etab_CP == "Public", "IPS_Etab_CP"], prob = seq(0, 1, length = 5), na.rm = TRUE)
+```
+
+Then, create a subcategory variable.
+
+```{r}
+data_depp$Sous_Categorie <- case_when(data_depp$Categ_Etab_CP == "Private" & data_depp$IPS_Etab_CP < median_prive_1 ~ "inf",
+                                      data_depp$Categ_Etab_CP == "Private" & data_depp$IPS_Etab_CP >= median_prive_1 ~ "sup",
+                                      data_depp$Categ_Etab_CP == "REP" & data_depp$IPS_Etab_CP < median_rep_1 ~ "inf",
+                                      data_depp$Categ_Etab_CP == "REP" & data_depp$IPS_Etab_CP >= median_rep_1 ~ "sup",
+                                      data_depp$Categ_Etab_CP == "REP+" & data_depp$IPS_Etab_CP < median_repplus_1 ~ "inf",
+                                      data_depp$Categ_Etab_CP == "REP+" & data_depp$IPS_Etab_CP >= median_repplus_1 ~ "sup",
+                                      data_depp$Categ_Etab_CP == "Public" & data_depp$IPS_Etab_CP < quartiles_public_1[[2]] ~ "inf-",
+                                      data_depp$Categ_Etab_CP == "Public" & data_depp$IPS_Etab_CP >= quartiles_public_1[[2]] & data_depp$IPS_Etab_CP < quartiles_public_1[[3]]~ "inf",
+                                      data_depp$Categ_Etab_CP == "Public" & data_depp$IPS_Etab_CP >= quartiles_public_1[[3]] & data_depp$IPS_Etab_CP < quartiles_public_1[[4]]~ "sup",
+                                      data_depp$Categ_Etab_CP == "Public" & data_depp$IPS_Etab_CP >= quartiles_public_1[[4]] ~ "sup+",)
+```
+
+Create a related subcategory variable
+
+```{r}
+data_depp$Categ_10c_CP <- case_when(data_depp$Categ_Etab_CP == "Private" & data_depp$IPS_Etab_CP < median_prive_1 ~ "Priv inf",
+                                    data_depp$Categ_Etab_CP == "Private" & data_depp$IPS_Etab_CP >= median_prive_1 ~ "Priv sup",
+                                    data_depp$Categ_Etab_CP == "REP" & data_depp$IPS_Etab_CP < median_rep_1 ~ "REP inf",
+                                    data_depp$Categ_Etab_CP == "REP" & data_depp$IPS_Etab_CP >= median_rep_1 ~ "REP sup",
+                                    data_depp$Categ_Etab_CP == "REP+" & data_depp$IPS_Etab_CP < median_repplus_1 ~ "REP+ inf",
+                                    data_depp$Categ_Etab_CP == "REP+" & data_depp$IPS_Etab_CP >= median_repplus_1 ~ "REP+ sup",
+                                    data_depp$Categ_Etab_CP == "Public" & data_depp$IPS_Etab_CP < quartiles_public_1[[2]] ~ "Pub inf-",
+                                    data_depp$Categ_Etab_CP == "Public" & data_depp$IPS_Etab_CP >= quartiles_public_1[[2]] &
+                                      data_depp$IPS_Etab_CP < quartiles_public_1[[3]]~ "Pub inf",
+                                    data_depp$Categ_Etab_CP == "Public" & data_depp$IPS_Etab_CP >= quartiles_public_1[[3]] &
+                                      data_depp$IPS_Etab_CP < quartiles_public_1[[4]]~ "Pub sup",
+                                    data_depp$Categ_Etab_CP == "Public" & data_depp$IPS_Etab_CP >= quartiles_public_1[[4]] ~ "Pub sup+")
+# Reorder columns 
+data_depp$Categ_10c_CP <- factor(data_depp$Categ_10c_CP, 
+                                 levels = c("Priv sup", "Priv inf",
+                                            "Pub sup+", "Pub sup", "Pub inf", "Pub inf-",
+                                            "REP sup", "REP inf", 
+                                            "REP+ sup", "REP+ inf"))
+```
+
+
+```{r}
+dim(data_depp)
+
+```
+
+# Normalize grades
+
+
+```{r}
+# create fluency grades
+
+if(ANNEE_COHORTE == 2018){
+Fluency_Wout_Cut <- c("T2_Lire_Mots","T2_Lire_Text", "T3_Lire_Mots", "T3_Lire_Text") 
+Fluency_With_Cut <- c("T2_Lire_Mots_Cut", "T2_Lire_Text_Cut", "T3_Lire_Mots_Cut", "T3_Lire_Text_Cut") # fluency with hard cuts
+  
+} else if (ANNEE_COHORTE == 2019){
+  
+Fluency_Wout_Cut <- c("T2_Lire_Mots","T2_Lire_Text", "T3_Lire_Mots", "T3_Lire_Text") 
+Fluency_With_Cut <- c("T2_Lire_Mots_Cut", "T2_Lire_Text_Cut", "T3_Lire_Mots_Cut", "T3_Lire_Text_Cut") # fluency with hard cuts
+
+} else if (ANNEE_COHORTE == 2020){
+  
+Fluency_Wout_Cut <- c("T2_Lire_Mots","T2_Lire_Text", "T3_Lire_Mots", "T3_Lire_Text")
+Fluency_With_Cut <- c("T2_Lire_Mots_Cut", "T2_Lire_Text_Cut" , "T3_Lire_Mots_Cut", "T3_Lire_Text_Cut")
+
+}
+  
+```
+
+# Create notes in % of success of the test to normalize the data, new variables in Percent of success per test _P
+
+```{r echo=TRUE}
+
+if(ANNEE_COHORTE == 2018){
+# New lists
+notes_P    <- paste(notes, "_P", sep="")
+Lang_T1_P  <- paste(Lang_T1, "_P", sep="")
+Lang_T2_P  <- paste(Lang_T2, "_P", sep="")
+Lang_T3_P  <- paste(Lang_T3, "_P", sep="")
+Math_T1_P <- paste(Math_T1, "_P", sep="")
+Math_T2_P <- paste(Math_T2, "_P", sep="")
+Math_T3_P <- paste(Math_T3, "_P", sep="")
+
+} else if (ANNEE_COHORTE == 2019){
+  
+notes_P    <- paste(notes, "_P", sep="")
+Lang_T1_P  <- paste(Lang_T1, "_P", sep="")
+Lang_T2_P  <- paste(Lang_T2, "_P", sep="")
+Lang_T3_P  <- paste(Lang_T3, "_P", sep="")
+Math_T1_P <- paste(Math_T1, "_P", sep="")
+Math_T2_P <- paste(Math_T2, "_P", sep="")
+Math_T3_P <- paste(Math_T3, "_P", sep="")
+  
+} else if (ANNEE_COHORTE == 2020){
+  
+notes_2020_P    <- paste(notes_2020, "_P", sep="")
+Lang_T1_P  <- paste(Lang_T1, "_P", sep="")
+Lang_T2_P  <- paste(Lang_T2, "_P", sep="")
+Lang_T3_P  <- paste(Lang_T3, "_P", sep="")
+Math_T1_P <- paste(Math_T1, "_P", sep="")
+Math_T2_P <- paste(Math_T2, "_P", sep="")
+Math_T3_P <- paste(Math_T3, "_P", sep="")
+  
+}
+
+if(ANNEE_COHORTE == 2018){
+  
+Add_Lang_T1_2018_P <- paste(Add_Lang_T1_2018, "_P", sep="")
+Add_Lang_T2_2018_P <- paste(Add_Lang_T2_2018, "_P", sep="")
+Add_notes_2018_P <- paste(Add_notes_2018, "_P", sep="")
+
+} else if (ANNEE_COHORTE == 2019){
+  
+Add_Lang_T2_2019_P <- paste(Add_Lang_T2_2019, "_P", sep="")
+Add_Math_T1_2019_P <- paste(Add_Math_T1_2019, "_P", sep="")
+Add_notes_2019_P <- paste(Add_notes_2019, "_P", sep="")
+
+}  else if (ANNEE_COHORTE == 2020){
+  
+Add_Lang_T2_2019_P <- paste(Add_Lang_T2_2020, "_P", sep="")
+Add_Math_T1_2019_P <- paste(Add_Math_T1_2020, "_P", sep="")
+Add_notes_2020_P <- paste(Add_notes_2020, "_P", sep="")
+}
+
+Fluency_With_Cut_P <- paste(Fluency_With_Cut, "_P", sep="")
+Fluency_Wout_Cut_P <- paste(Fluency_Wout_Cut, "_P", sep="")
+
+# Creating variables in _P
+
+  # scaled_grades <- as.data.frame(scale(data_depp_1[, c(notes, Add_notes_2018)]))
+  # names(scaled_grades) <- c(notes_P, Add_notes_2018_P)
+  # data_depp_1 <- cbind(data_depp_1, scaled_grades)
+  # scaled_grades <- as.data.frame(scale(data_depp_1[, c(notes, Add_notes_2019)]))
+  # names(scaled_grades) <- c(notes_P, Add_notes_2019_P)  
+  # data_depp_1 <- cbind(data_depp_1, scaled_grades)
+
+if(ANNEE_COHORTE == 2018){
+  
+  for (i in c(notes, Add_notes_2018, Fluency_With_Cut, Fluency_Wout_Cut)){
+    
+    data_depp[[paste0(i, "_P")]] <- (data_depp[[i]] - min(data_depp[, i], na.rm = TRUE)) / (max(data_depp[, i], na.rm = TRUE) - min(data_depp[, i], na.rm = TRUE))*100
+    
+  }
+  
+} 
+
+if (ANNEE_COHORTE == 2019){
+  
+  for (i in c(notes, Add_notes_2019, Fluency_With_Cut, Fluency_Wout_Cut)){
+    data_depp[[paste0(i, "_P")]] <- (data_depp[[i]] - min(data_depp[, i], na.rm = TRUE)) / (max(data_depp[, i], na.rm = TRUE) - min(data_depp[, i], na.rm = TRUE))*100
+  }
+  
+} 
+
+
+if (ANNEE_COHORTE == 2020){
+  
+  for (i in c(notes, Add_notes_2020, Fluency_With_Cut, Fluency_Wout_Cut)){
+    data_depp[[paste0(i, "_P")]] <- (data_depp[[i]] - min(data_depp[, i], na.rm = TRUE)) / (max(data_depp[, i], na.rm = TRUE) - min(data_depp[, i], na.rm = TRUE))*100
+  }
+  
+}
+
+```
+
+
+```{r}
+dim(data_depp)
+
+```
+
+# Creating Composed variable made from variables in _P
+
+Creation of new ultra-composed variables regarding language and maths at T1, T2, T3. We decided to gather all the raw data (in percent of success) as the mean of the exercise (language or maths), as follow: 
+
+NB : no need to add "na.rm =  TRUE" as NA = 0 due to imputation
+data_depp$T1_Language_bis <- apply(data_depp[ , c(Lang_T1_P)], 1, mean, na.rm = TRUE)
+
+```{r echo=TRUE}
+if (ANNEE_COHORTE == 2018){
+  
+  # Language at T1 without  T1_Reco_lettre_ecri so that it is comparable between 2018 and 2019
+
+  data_depp$T1_Language <- apply(data_depp[ , c(Lang_T1_P)], 1, mean, na.rm = TRUE)
+
+  # Language at T2 without  T2_var so that it is comparable between 2018 and 2019
+  data_depp$T2_Language <- apply(data_depp[ , c(Lang_T2_P)], 1, mean, na.rm = TRUE)
+  data_depp$T3_Language <- apply(data_depp[ , c(Lang_T3_P)], 1, mean, na.rm = TRUE)
+  
+  data_depp$T2_Language_Cut <- apply(data_depp[ , c("T2_Comp_Phra_P","T2_Lire_Mots_Cut_P", 
+                                                   "T2_Lire_Text_Cut_P","T2_Manip_Phon_P", "T2_Conn_Lettres_P", 
+                                                   "T2_Ecri_Syll_P", "T2_Ecri_Mots_P")], 1, mean, na.rm = TRUE)
+  data_depp$T3_Language_Cut <- apply(data_depp[ , c("T3_Comp_Mots_P","T3_Comp_Phra_P", "T3_Ecri_Syll_P","T3_Ecri_Mots_P",
+                                                  "T3_Comp_Phra_Lu_P", "T3_Comp_Text_Lu_P", "T3_Lire_Mots_Cut_P",
+                                                  "T3_Lire_Text_Cut_P")], 1, mean, na.rm = TRUE)
+  data_depp$T1_Math <- apply(data_depp[ , c(Math_T1_P)], 1, mean, na.rm = TRUE)
+  data_depp$T2_Math <- apply(data_depp[ , c(Math_T2_P)], 1, mean, na.rm = TRUE)
+  
+  # Without data_depp_1$T3_Resoud_Pb_P as we used it as our outcome
+  data_depp$T3_Math_SEM <- apply(data_depp[ , c("T3_Ecri_Nombre_P", "T3_Lire_Nombre_P", "T3_Repres_Nb_P", "T3_Calcul_Mental_P",
+                                                "T3_Ligne_Num_P", "T3_Assemblage_P", "T3_Addition_P", "T3_Soustract_P")], 1, mean, na.rm = TRUE)
+  # With data_depp_1$T3_Resoud_Pb_P for Regressions and Description
+  data_depp$T3_Math <- apply(data_depp[ , c(Math_T3_P)], 1, mean, na.rm = TRUE)
+  
+}
+if (ANNEE_COHORTE == 2019){
+  # without new variables in language for 2019
+  data_depp$T1_Language <- apply(data_depp[ , c(Lang_T1_P)], 1, mean, na.rm = TRUE)
+  data_depp$T2_Language <- apply(data_depp[ , c(Lang_T2_P)], 1, mean, na.rm = TRUE)
+  data_depp$T3_Language <- apply(data_depp[ , c(Lang_T3_P)], 1, mean, na.rm = TRUE)
+  data_depp$T2_Language_Cut <- apply(data_depp[ , c("T2_Comp_Phra_P","T2_Lire_Mots_Cut_P", 
+                                                   "T2_Lire_Text_Cut_P","T2_Manip_Phon_P", "T2_Conn_Lettres_P", 
+                                                 "T2_Ecri_Syll_P", "T2_Ecri_Mots_P")], 1, mean, na.rm = TRUE)
+  data_depp$T3_Language_Cut <- apply(data_depp[ , c("T3_Comp_Mots_P","T3_Comp_Phra_P", "T3_Ecri_Syll_P","T3_Ecri_Mots_P",
+                                                  "T3_Comp_Phra_Lu_P", "T3_Comp_Text_Lu_P", "T3_Lire_Mots_Cut_P",
+                                                  "T3_Lire_Text_Cut_P")], 1, mean, na.rm = TRUE)
+  
+  # Math T1 without T1_Assemblage so that it's comparable between 2018 and 2019
+  
+  data_depp$T1_Math <- apply(data_depp[ , c(Math_T1_P)], 1, mean, na.rm = TRUE)
+  data_depp$T2_Math <- apply(data_depp[ , c(Math_T2_P)], 1, mean, na.rm = TRUE)
+  
+  # Without data_depp_1$T3_Resoud_Pb_P as we used it as our outcome
+  data_depp$T3_Math_SEM <- apply(data_depp[ , c("T3_Ecri_Nombre_P", "T3_Lire_Nombre_P", "T3_Repres_Nb_P", "T3_Calcul_Mental_P",
+                                                "T3_Ligne_Num_P", "T3_Assemblage_P", "T3_Addition_P", "T3_Soustract_P")], 1, mean, na.rm = TRUE)
+  # With data_depp_1$T3_Resoud_Pb_P for Regressions and Description
+  data_depp$T3_Math <- apply(data_depp[ , c(Math_T3_P)], 1, mean, na.rm = TRUE) 
+}
+
+if (ANNEE_COHORTE == 2020){
+  
+  # without new variables for language in 2020
+  data_depp$T1_Language <- apply(data_depp[ , c(Lang_T1_P)], 1, mean, na.rm = TRUE) 
+  data_depp$T2_Language <- apply(data_depp[ , c(Lang_T2_P)], 1, mean, na.rm = TRUE) 
+  data_depp$T2_Language_Cut <- apply(data_depp[ , c("T2_Comp_Phra_P","T2_Lire_Mots_Cut_P", 
+                                                   "T2_Lire_Text_Cut_P","T2_Manip_Phon_P", "T2_Conn_Lettres_P", 
+                                                 "T2_Ecri_Syll_P", "T2_Ecri_Mots_P")], 1, mean, na.rm = TRUE) 
+  data_depp$T3_Language <- apply(data_depp[ , c(Lang_T3_P)], 1, mean, na.rm = TRUE)
+  data_depp$T3_Language_Cut <- apply(data_depp[ , c("T3_Comp_Mots_P","T3_Comp_Phra_P", "T3_Ecri_Syll_P","T3_Ecri_Mots_P",
+                                                  "T3_Comp_Phra_Lu_P", "T3_Comp_Text_Lu_P", "T3_Lire_Mots_Cut_P",
+                                                  "T3_Lire_Text_Cut_P")], 1, mean, na.rm = TRUE)
+  
+   # Math T1 without T1_Assemblage so that it's comparable between 2018 and 2019
+  
+  data_depp$T1_Math <- apply(data_depp[ , c(Math_T1_P)], 1, mean, na.rm = TRUE)
+  data_depp$T2_Math <- apply(data_depp[ , c(Math_T2_P)], 1, mean, na.rm = TRUE)
+  
+  # Without data_depp_1$T3_Resoud_Pb_P as we used it as our outcome
+  data_depp$T3_Math_SEM <- apply(data_depp[ , c("T3_Ecri_Nombre_P", "T3_Lire_Nombre_P", "T3_Repres_Nb_P", "T3_Calcul_Mental_P",
+                                                "T3_Ligne_Num_P", "T3_Assemblage_P", "T3_Addition_P", "T3_Soustract_P")], 1, mean, na.rm = TRUE)
+  # With data_depp_1$T3_Resoud_Pb_P for Regressions and Description
+  data_depp$T3_Math <- apply(data_depp[ , c(Math_T3_P)], 1, mean, na.rm = TRUE) 
+}
+
+```
+
+# New lists with only similar tests in Lang and Math in cohort 1 and 2 in percent of test success 
+
+```{r}
+
+Lang_T1T2T3 <-  c( Lang_T1_P, "T1_Language",
+                   Lang_T2_P, "T2_Lire_Mots", "T2_Lire_Text", "T2_Lire_Mots_Cut", "T2_Lire_Text_Cut", "T2_Language", "T2_Language_Cut",
+                   Lang_T3_P, "T3_Lire_Mots", "T3_Lire_Text", "T3_Lire_Mots_Cut", "T3_Lire_Text_Cut", "T3_Language", "T3_Language_Cut")
+Math_T1T2T3 <- c( Math_T1_P, "T1_Math",
+                  Math_T2_P, "T2_Math",
+                  Math_T3_P, "T3_Math")
+
+```
+
+# Illustration of what we did: keep the same distribution but scale everything in between 0 and 100.
+
+```{r}
+ggplot(data = data_depp, aes(x = T1_Denombrer)) +
+  geom_histogram(bins = 30, alpha = 0.5) +
+  theme_bw()
+ggplot(data = data_depp, aes(x = T1_Denombrer_P)) +
+  geom_histogram(bins = 30, alpha = 0.5) +
+  theme_bw()
+```
+
+
+```{r}
+if(ANNEE_COHORTE == 2018){
+  
+  summary(data_depp[, c(notes_P, Add_notes_2018_P, Fluency_With_Cut_P)])
+  
+} else if (ANNEE_COHORTE == 2019){
+  
+  summary(data_depp[, c(notes_P, Add_notes_2019_P, Fluency_With_Cut_P)])
+  
+} else if (ANNEE_COHORTE == 2020){
+  
+  summary(data_depp[, c(notes_P, Add_notes_2020_P, Fluency_With_Cut_P)])
+}
+```
+
+Sanity check: correlation coefficients should be the same everywhere.
+
+```{r}
+
+  
+round(cor(data_depp[, notes_P])) == round(cor(data_depp[, notes])) 
+  
+```
+
+
+Another sanity check: the coefficients of a linear model have to be the same:
+```{r}
+  
+test <- as.data.frame(scale(data_depp[, notes]))
+test_P <- as.data.frame(scale(data_depp[, notes_P]))
+lm <- lm(T3_Comp_Phra ~ ., data = test)
+lm_P <- lm(T3_Comp_Phra_P ~ ., data = test_P)
+round(as.vector(lm$coefficients),10) == round(as.vector(lm_P$coefficients),10)
+rm(test)
+rm(test_P)
+rm(lm)
+rm(lm_P)
+
+```
+
+
+
+# Visualize distributions for each period and thematic
+
+```{r}
+# Lang T1
+
+if(ANNEE_COHORTE == 2018){
+  data_depp %>% 
+    melt(measure.vars = c(Lang_T1_P, Add_Lang_T1_2018_P)) %>%
+    ggplot(aes(x = value))  + 
+    geom_histogram(bins = 30) + 
+    facet_wrap(facets = variable ~ .) +
+    theme_bw()  
+}
+
+if(ANNEE_COHORTE == 2019){
+  data_depp %>% 
+    melt(measure.vars = c(Lang_T1_P)) %>%
+    ggplot(aes(x = value))  + 
+    geom_histogram(bins = 30) + 
+    facet_wrap(facets = variable ~ .) +
+    theme_bw()  
+}
+
+if(ANNEE_COHORTE == 2020){
+  data_depp %>% 
+    melt(measure.vars = c(Lang_T1_P)) %>%
+    ggplot(aes(x = value))  + 
+    geom_histogram(bins = 30) + 
+    facet_wrap(facets = variable ~ .) +
+    theme_bw()  
+}
+```
+
+
+```{r}
+# Language T2
+if(ANNEE_COHORTE == 2018){
+  data_depp %>% 
+    melt(measure.vars = c(Lang_T2_P, Add_Lang_T2_2018_P, "T2_Lire_Mots_Cut_P", "T2_Lire_Text_Cut_P")) %>%
+    ggplot(aes(x = value))  + 
+    geom_histogram(bins = 30) + 
+    facet_wrap(facets = variable ~ .) +
+    theme_bw()  
+}
+if(ANNEE_COHORTE == 2019){
+  data_depp %>% 
+    melt(measure.vars = c(Lang_T2_P, Add_Lang_T2_2019_P, "T2_Lire_Mots_Cut_P", "T2_Lire_Text_Cut_P")) %>%
+    ggplot(aes(x = value))  + 
+    geom_histogram(bins = 30) + 
+    facet_wrap(facets = variable ~ .) +
+    theme_bw()  
+}
+
+if(ANNEE_COHORTE == 2020){
+  data_depp %>% 
+    melt(measure.vars = c(Lang_T2_P, Add_Lang_T2_2020, "T2_Lire_Mots_Cut_P", "T2_Lire_Text_Cut_P")) %>%
+    ggplot(aes(x = value))  + 
+    geom_histogram(bins = 30) + 
+    facet_wrap(facets = variable ~ .) +
+    theme_bw()  
+}
+
+```
+
+
+```{r}
+# Lang T3
+
+
+data_depp %>% 
+    melt(measure.vars = c(Lang_T3_P, "T3_Lire_Mots_Cut_P" , "T3_Lire_Text_Cut_P")) %>%
+    ggplot(aes(x = value))  + 
+    geom_histogram(bins = 30) + 
+    facet_wrap(facets = variable ~ .) +
+    theme_bw()  
+
+
+```
+
+
+```{r}
+# Math T1
+if(ANNEE_COHORTE == 2018){
+  data_depp %>% 
+    melt(measure.vars = c(Math_T1_P)) %>%
+    ggplot(aes(x = value))  + 
+    geom_histogram(bins = 30) + 
+    facet_wrap(facets = variable ~ .) +
+    theme_bw()  
+}
+if(ANNEE_COHORTE == 2019){
+  data_depp %>% 
+    melt(measure.vars = c(Math_T1_P, Add_Math_T1_2019_P)) %>%
+    ggplot(aes(x = value))  + 
+    geom_histogram(bins = 30) + 
+    facet_wrap(facets = variable ~ .) +
+    theme_bw()  
+}
+```
+
+
+```{r}
+# Math T2
+data_depp %>% 
+    melt(measure.vars = c(Math_T2_P)) %>%
+    ggplot(aes(x = value))  + 
+    geom_histogram(bins = 30) + 
+    facet_wrap(facets = variable ~ .) +
+    theme_bw()  
+```
+
+
+```{r}
+# Math T3
+
+data_depp %>% 
+    melt(measure.vars = c(Math_T3_P)) %>%
+    ggplot(aes(x = value))  + 
+    geom_histogram(bins = 30) + 
+    facet_wrap(facets = variable ~ .) +
+    theme_bw()  
+
+```
+
+
+
+```{r}
+
+data_depp %>% 
+  melt(measure.vars = c("T1_Language", "T2_Language", "T3_Language", 
+                        "T1_Math", "T2_Math", "T3_Math_SEM",
+                         "T2_Language_Cut", "T3_Language_Cut", "T3_Math")) %>%
+  ggplot(aes(x = value))  + 
+  geom_histogram(binwidth = 5, alpha = 0.6, color = "blue", fill = "pink") + 
+  facet_wrap(facets = variable ~ .) +
+  theme_bw()
+  
+```
+
+
+# Percentiles of levels for ranking
+
+Creation of a national ranking on the general population.
+
+```{r echo=TRUE}
+# Creating 9 composite variables in Rank 
+n1 <- nrow(data_depp)
+
+  
+data_depp$T1_Lang_Rank          <- (rank(data_depp$T1_Language, na.last = "keep", ties.method = "average") - 1) / (n1 - 1)
+data_depp$T2_Lang_Rank          <- (rank(data_depp$T2_Language, na.last = "keep", ties.method = "average") - 1) / (n1 - 1)
+data_depp$T3_Lang_Rank          <- (rank(data_depp$T3_Language, na.last = "keep", ties.method = "average") - 1) / (n1 - 1)
+data_depp$T2_Lang_CuRank        <- (rank(data_depp$T2_Language_Cut, na.last = "keep", ties.method = "average") - 1) / (n1 - 1)
+data_depp$T3_Lang_CuRank        <- (rank(data_depp$T3_Language_Cut, na.last = "keep", ties.method = "average") - 1) / (n1 - 1)
+data_depp$T1_Math_Rank          <- (rank(data_depp$T1_Math, na.last = "keep", ties.method = "average") - 1) / (n1 - 1)
+data_depp$T2_Math_Rank          <- (rank(data_depp$T2_Math, na.last = "keep", ties.method = "average") - 1) / (n1 - 1)
+data_depp$T3_Math_SEM_Rank      <- (rank(data_depp$T3_Math_SEM, na.last = "keep", ties.method = "average") - 1) / (n1 - 1)
+data_depp$T3_Math_Rank          <- (rank(data_depp$T3_Math, na.last = "keep", ties.method = "average") - 1) / (n1 - 1)
+
+
+```
+
+# Creating all variables per rank 
+
+
+Effect of level in math at T1 
+
+10 x le rang   
+0.21 => 2.1 = Floor (prend le seuil bas) 
+=> 2 = + 1 pour le mettre dans le bon décile. 
+si le rang est 0.1 => c'est compté dans le décile du dessus. 
+pour chaque éleve, on a mis le rang moyen. 
+Plus il y a d'éleves qui ont le meme rang moyen que lui, plus leur rang moyen baisse. 
+Donc quand on fait les déciles avec les rangs moyens, ca baisse artificiellement. 
+Donc 1 c'est le plus mauvais et 10 c'est le meilleur +++
+
+```{r}
+
+  
+# Creating New lists
+notes_Rank     <- paste(notes_P, "_Rank", sep="")
+Lang_T1_Rank   <- paste(Lang_T1_P, "_Rank", sep="")
+Lang_T2_Rank   <- paste(Lang_T2_P, "_Rank", sep="")
+Lang_T3_Rank   <- paste(Lang_T3_P, "_Rank", sep="")
+Math_T1_Rank   <- paste(Math_T1_P, "_Rank", sep="")
+Math_T2_Rank   <- paste(Math_T2_P, "_Rank", sep="")
+Math_T3_Rank   <- paste(Math_T3_P, "_Rank", sep="")
+Fluency_With_Cut_Rank <- paste(Fluency_With_Cut_P, "Rank", sep="_")
+Fluency_Wout_Cut_Rank <- paste(Fluency_Wout_Cut_P, "Rank", sep="_")
+
+
+
+# Creating new variables from _P to _Ranks
+if(ANNEE_COHORTE == 2018){
+  
+  # scaled_grades <- as.data.frame(scale(data_depp[, c(notes, Add_notes_2018)]))
+  # names(scaled_grades) <- c(notes_Rank, Add_notes_2018_Rank)
+  # data_depp_1 <- cbind(data_depp, scaled_grades)
+  
+for (i in c(notes_P, Add_notes_2018_P, Fluency_With_Cut_P, Fluency_Wout_Cut_P)) {
+  data_depp[[paste0(i, "_Rank")]] <- as.numeric((rank(data_depp[[i]], na.last = "keep", ties.method = "average") - 1) / (n1 - 1))
+}
+rm(i)
+  
+} else if (ANNEE_COHORTE == 2019){
+  
+  # scaled_grades <- as.data.frame(scale(data_depp[, c(notes, Add_notes_2019)]))
+  # names(scaled_grades) <- c(notes_Rank, Add_notes_2019_Rank)
+  # data_depp_1 <- cbind(data_depp, scaled_grades)
+  
+for (i in c(notes_P, Add_notes_2019_P, Fluency_With_Cut_P, Fluency_Wout_Cut_P)) {
+  data_depp[[paste0(i, "_Rank")]] <- as.numeric((rank(data_depp[[i]], na.last = "keep", ties.method = "average") - 1) / (n1 - 1))
+}
+rm(i)
+  
+} else if (ANNEE_COHORTE == 2020){
+  
+  # scaled_grades <- as.data.frame(scale(data_depp[, c(notes, Add_notes_2019)]))
+  # names(scaled_grades) <- c(notes_Rank, Add_notes_2019_Rank)
+  # data_depp_1 <- cbind(data_depp, scaled_grades)
+  
+for (i in c(notes_P, Add_notes_2020_P, Fluency_With_Cut_P, Fluency_Wout_Cut_P)) {
+  data_depp[[paste0(i, "_Rank")]] <- as.numeric((rank(data_depp[[i]], na.last = "keep", ties.method = "average") - 1) / (n1 - 1))
+}
+rm(i)
+  
+}
+
+
+  
+notes_P_Rank <- c(Lang_T1_Rank, Lang_T2_Rank, Lang_T3_Rank, Math_T1_Rank, Math_T2_Rank,
+                 Math_T3_Rank, Fluency_With_Cut_Rank, Fluency_Wout_Cut_Rank)
+Lang_T1T2T3_Rank <-  c( Lang_T1_Rank, "T1_Lang_Rank",
+                        Lang_T2_Rank, "T2_Lang_Rank", "T2_Lang_CuRank",
+                        Lang_T3_Rank, "T3_Lang_Rank", "T3_Lang_CuRank ")
+Math_T1T2T3_Rank <- c( Math_T1_Rank, "T1_Math_Rank",
+                       Math_T2_Rank, "T2_Math_Rank",
+                       Math_T3_Rank, "T3_Math_SEM_Rank", "T3_Math_Rank")
+
+
+```
+
+We decided to use the rank() function instead of percent_rank()
+Rank() functions as follow : 
+- na.last = "keep", ties.method = "average"
+= (rank of row in its partition - 1) / (numbers of rows in the partition - 1)
+- na.last = "keep" : all NA are not ranked and keep their "value of NA".
+- ties.method = "average" : gives a mean rank with elements have the same value (ex: the value 1 appears 2 times, for 2 people at the rank 1 and 2, therefore their rank will be of 1.5.
+
+percent_rank which is built as follow :
+(rank of row in its partition - 1) / (numbers of rows in the partition - 1)
+
+Note that because it averages position when students have the same rank, then it leads to several students having the same percentile position, for example here we take the children that have the same rank at T1 in Lang, and therefore the same average grade, but for example they had different grades on each separate exam.
+
+
+```{r}
+data_depp[data_depp$T1_Lang_Rank == data_depp$T1_Lang_Rank[[1]], c("T1_Lang_Rank", "T1_Language", Lang_T1_P)][1:10,]
+
+nrow(data_depp[data_depp$T1_Lang_Rank == data_depp$T1_Lang_Rank[[1]], c("T1_Lang_Rank", "T1_Language", Lang_T1_P)])
+```
+
+
+We can have a look to the best children in Language at T1 for example, where we observed that they had the maximum grades everywhere!
+
+```{r}
+data_depp[data_depp$T1_Lang_Rank == max(data_depp$T1_Lang_Rank), c("T1_Lang_Rank", "T1_Language", Lang_T1_P)][1:10,]
+```
+
+
+We can also investigate the math at period T2 for example:
+
+```{r}
+data_depp[data_depp$T2_Math_Rank == max(data_depp$T2_Math_Rank), c("T2_Math_Rank", "T2_Math", Math_T2_P)][1:10,]
+```
+
+
+Note that the interest of rank is to look at the primary outcome with an almost uniform function. Then only the position matters, and not the score in itself. A plot allows to visualize such phenomenon.
+
+```{r}
+
+data_depp %>% 
+  melt(measure.vars = c("T1_Lang_Rank", "T2_Lang_Rank", "T3_Lang_Rank", 
+                        "T1_Math_Rank", "T2_Math_Rank", "T3_Math_SEM_Rank", 
+                        "T2_Lang_CuRank", "T3_Lang_CuRank", "T3_Math_Rank")) %>%
+  ggplot(aes(x = value))  + 
+  geom_histogram(binwidth = 0.025, alpha = 0.6, color = "blue", fill = "pink") + # all 2.5 percentiles 
+  facet_wrap(facets = variable ~ .) +
+  theme_bw()
+  
+```
+
+
+Why do we observe that Math at T2 is such a noisy set? The explanation comes from the test in itself, as they are highly discretized. Indeed, in Math T2, 4 tests over 6 are discretized between 0, 1, ..., 10, and one is from 0, 0.5, ..., 9.5, 10. While in Language T2, only 3 tests over 7 are discretized.
+
+We can quantify it, counting the number of different grades on each tests for Math at T2, that is:
+
+```{r}
+number_of_combinations_math_T2 = 0
+for (i in Math_T2_P){
+  number_of_combinations_math_T2 = number_of_combinations_math_T2 + length(unique(data_depp[, i]))
+}
+print("Number of combinaisons in Math T2: ")
+print(number_of_combinations_math_T2)
+number_of_combinations_lang_T2 = 0
+for (i in Lang_T2_P){
+  number_of_combinations_lang_T2 = number_of_combinations_lang_T2 + length(unique(data_depp[, i]))
+}
+print("Number of combinaisons in Lang T2: ")
+print(number_of_combinations_lang_T2)
+```
+
+But normally, other rank in period also appears "noisy" and "non-uniform" when the bins are small enough. Let's investigate:
+
+```{r}
+data_depp %>% 
+  melt(measure.vars = c("T1_Lang_Rank")) %>%
+  ggplot(aes(x = value))  + 
+  geom_histogram(binwidth = 0.02, alpha = 0.6, color = "blue", fill = "pink") + 
+  facet_wrap(facets = variable ~ .) +
+  theme_bw() 
+
+data_depp %>% 
+  melt(measure.vars = c("T1_Lang_Rank")) %>%
+  ggplot(aes(x = value))  + 
+  geom_histogram(binwidth = 0.001, alpha = 0.6, color = "blue", fill = "pink") + 
+  facet_wrap(facets = variable ~ .) +
+  theme_bw()
+```
+
+
+```{r}
+dim(data_depp)
+```
+
+
+# New variables as possible outcomes: progression
+
+Progression on each period in national ranking.
+```{r}
+  
+# Language
+# Y = rank in T3 - Rank in T1
+data_depp$T3_T1_Language_Rk <- data_depp$T3_Lang_Rank - data_depp$T1_Lang_Rank
+
+# Y = rank in T2 - Rank in T1
+data_depp$T2_T1_Language_Rk <- data_depp$T2_Lang_Rank - data_depp$T1_Lang_Rank
+
+
+
+```
+
+Sanity check that the progression is never above 1.
+
+```{r}
+
+
+ggplot(data_depp, aes(x = T3_T1_Language_Rk)) +
+  geom_histogram() +
+  theme_classic()
+ggplot(data_depp, aes(x = T2_T1_Language_Rk)) +
+  geom_histogram() +
+  theme_classic()
+
+
+```
+
+
+```{r}
+# Math
+  
+# Y = rank in T3 - Rank in T1
+data_depp$T3_T1_Maths_Rk <- data_depp$T3_Math_Rank - data_depp$T1_Math_Rank
+# Y = rank in T2 - Rank in T1
+data_depp$T2_T1_Maths_Rk <- data_depp$T2_Math_Rank - data_depp$T1_Math_Rank
+
+
+```
+
+Sanity check that the progression is never above 1.
+
+```{r}
+  
+ggplot(data_depp, aes(x = T3_T1_Maths_Rk)) +
+  geom_histogram() +
+  theme_classic()
+ggplot(data_depp, aes(x = T2_T1_Maths_Rk)) +
+  geom_histogram() +
+  theme_classic()
+
+
+```
+
+```{r}
+dim(data_depp)
+```
+
+
+# Flag first child per class in mathematics and language at T1, T2, and T3
+
+```{r}
+
+synthetic_grades <- c("T1_Math", "T2_Math", "T3_Math",
+                      "T1_Language", "T2_Language", "T3_Language")
+
+for (grade in synthetic_grades){
+  
+  # create table with first grade, first children per class
+  temp <- data_depp[, c("ID_etab_class", grade, "ID_Eleve")] %>%
+    mutate_at(all_of(grade), funs(round(., 0))) %>%
+    group_by(ID_etab_class) %>%
+    top_n(1, !!as.name(grade))
+  
+  # store first children
+  are_first_children <- temp$ID_Eleve
+  
+  # create column
+  data_depp[, paste0("first_in_", grade)] <- ifelse(data_depp$ID_Eleve %in% are_first_children, TRUE, FALSE)
+}
+
+rm(temp)
+rm(are_first_children)
+
+
+```
+
+The higher the rank, the higher the grade.
+
+```{r}
+
+synthetic_grades <- c("T1_Math_Rank", "T2_Math_Rank", "T3_Math_Rank",
+                      "T1_Lang_Rank", "T2_Lang_Rank", "T3_Lang_Rank")
+
+for (grade in synthetic_grades){
+  
+  # create table with first grade, first children per class
+  temp <- data_depp[, c("ID_etab_class", grade, "ID_Eleve")] %>%
+    # mutate_at(all_of(grade), funs(round(., 2))) %>%
+    group_by(ID_etab_class) %>%
+    top_n(1, !!as.name(grade))
+  
+  # store first children
+  are_first_children <- temp$ID_Eleve  # garde uniquement les premiers éleves
+  
+  # create column
+  data_depp[, paste0("first_in_", grade)] <- ifelse(data_depp$ID_Eleve %in% are_first_children, TRUE, FALSE)
+}
+
+
+rm(temp)
+rm(are_first_children)
+
+
+```
+
+```{r}
+# # sanity check 2019
+# data_depp[data_depp$ID_etab_class == "0040f5baecfe0b65_3a55aff6e674", c("ID_etab_class", "first_in_T1_Math", "first_in_T1_Math_Rank", "T1_Math", "T1_Math_Rank")]
+```
+
+# Creation of list of variables
+
+```{r include=FALSE}
+caracteristiques_eleve <- c("Age_CP","Sexe",
+                            "Categ_Etab_CP",
+                            "IPS_Etab_CP") #, "IPS_Etab_CE1" , "Categ_Etab_CE1",
+
+ids <- c("ID_Eleve","ID_Etab_CP", "ID_etab_class") #"ID_Etab_CE1",
+```
+
+
+# Save output
+
+```{r}
+# save the whole image
+
+
+if(IMPUTED == "non-imputed"){
+  if(NAOMIT == "True"){
+save.image(file = paste0("./data/cohort_", ANNEE_COHORTE, "_", IMPUTED, "_after_2_composite_covariate_naomit_True.RData"))
+  } else if (NAOMIT == "False"){
+save.image(file = paste0("./data/cohort_", ANNEE_COHORTE, "_", IMPUTED, "_after_2_composite_covariate_naomit_False.RData"))
+    }
+}
+
+if(IMPUTED == "imputed"){
+save.image(file = paste0("./data/cohort_", ANNEE_COHORTE, "_", IMPUTED, "_after_2_composite_covariate.RData"))
+} 
+```
+

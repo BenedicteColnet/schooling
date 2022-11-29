@@ -1,0 +1,1204 @@
+---
+title: "Data Management of DEPP cohort Evalaide - Preprocess"
+author:
+  - Pauline Martinot [UNICOG, NeuroSpin]
+  - Bénédicte Colnet [Inria, Paris-Saclay]
+date: "July 2021"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    number_sections: no
+    toc: yes
+    toc_depth: 2
+abstract: | 
+  This notebook concerns data from National assessment in 1st and 2nd grade in France : Data preprocessing
+---
+
+# Parameters
+
+```{r include=FALSE}
+# Parameters 
+ANNEE_COHORTE = 2020 #  2018 2019 2020 
+# Age in month (with limits to detect outliers)
+AGE_PRECOCE    = 69   # parameter used to classify a child being in advance, but not an outlier
+AGE_NORMAL_MOY = 74   # helps to define subcategories for age
+AGE_RETARD     = 80   # parameter used to classify a child being late, but not an outlier
+AGE_MIN        = 51   # all children with age below this age are considered outliers
+AGE_MAX        = 99   # all children with age above this age are considered outliers
+AGE_NORM_BAS   = 58   # all children with age between this and AGE_PRECOCE are considered 1 year in advance
+AGE_NORM_SUP   = 91   # all children with age between this and AGE_RETARD are considered 1 year late
+PATH_IMAGE = "./img/" # where to store output
+
+# threshold on class size
+SEUIL_INF_CLASS = 5    # as calculating heterogeneity and mixity in very small classes might be confusing
+SEUIL_SUP_CLASS = 28   # all classes above are considered outliers
+SEUIL_TAILLE    = 13   # Political measure on small classe put the threshold at 12 
+TEST = FALSE # TRUE if the notebook is currently being tested and want to run "fast" the pipeline
+```
+
+# Load data
+
+```{r include=FALSE}
+
+if (ANNEE_COHORTE == 2018){
+  data_depp_1 <- read.csv2("./data/data_depp_1819.csv", sep=';', header=TRUE) 
+  } else if (ANNEE_COHORTE == 2019){
+  data_depp_1 <- read.csv2("./data/data_depp_1920.csv", sep=';', header=TRUE) 
+  } else if (ANNEE_COHORTE == 2020){
+  data_depp_1 <- read.csv2("./data/data_depp_2021.csv", sep=';', header=TRUE) 
+  } else {
+  print("Error in ANNEE_COHORTE or data location")
+  }
+if(TEST){
+  data_depp_1 <- data_depp_1[1:10000,]
+}
+```
+
+
+# Libraries & Packages 
+
+```{r setup package, include=FALSE, warning = FALSE, message = FALSE}
+library(dplyr)
+library(ggplot2)
+library(naniar)
+library(reshape2) 
+library(UpSetR) # for upset plot (equivalence of Venn diagram)
+library(mice) # imputation
+
+knitr::opts_chunk$set(echo = TRUE, include = TRUE)
+```
+
+
+# Detect empty raw if any, and warn.
+
+```{r echo=FALSE}
+# indicator of rows with only NA
+ind <- apply(data_depp_1, 1, function(x) all(is.na(x)))
+if (sum(ind) > 0){
+  print("WARNING:")
+  print(sum(ind))
+  print(" rows contain only NA. They are deleted")
+  data_depp_1 <- data_depp_1[!ind,]
+} else {
+  print("GOOD: No rows with only NAs.")
+}
+```
+
+Note that the raw data contains `r nrow(data_depp_1)` children.
+
+# Check nature of the column
+
+```{r include=FALSE}
+sapply(data_depp_1, class)
+if (ANNEE_COHORTE == 2018){
+  
+    data_depp_1$sexe              <- as.factor(as.character(data_depp_1$sexe))
+    data_depp_1$strate_CP         <- as.factor(as.character(data_depp_1$strate_CP))
+    data_depp_1$strate_CE1        <- as.factor(as.character(data_depp_1$strate_CE1))
+    data_depp_1$IPS_CP            <- as.numeric(as.character(data_depp_1$IPS_CP))
+    data_depp_1$IPS_CE1           <- as.numeric(as.character(data_depp_1$IPS_CE1))
+  } else if (ANNEE_COHORTE == 2019){
+    
+    data_depp_1$sexe              <- as.factor(as.character(data_depp_1$sexe))
+    data_depp_1$strate_CP         <- as.factor(as.character(data_depp_1$strate_CP))
+    data_depp_1$strate_Mi         <- as.factor(as.character(data_depp_1$strate_Mi))
+    data_depp_1$strate_CE1        <- as.factor(as.character(data_depp_1$strate_CE1))
+    data_depp_1$ips_Debut         <- as.numeric(as.character(data_depp_1$ips_Debut))
+    data_depp_1$ips_Mi            <- as.numeric(as.character(data_depp_1$ips_Mi))
+    data_depp_1$ips_CE1           <- as.numeric(as.character(data_depp_1$ips_CE1))
+  } else if (ANNEE_COHORTE == 2020){
+    data_depp_1$sexe              <- as.factor(as.character(data_depp_1$sexe))
+    data_depp_1$strate_CP         <- as.factor(as.character(data_depp_1$strate_CP))
+    data_depp_1$strate_Mi         <- as.factor(as.character(data_depp_1$strate_Mi))
+    data_depp_1$strate_CE1        <- as.factor(as.character(data_depp_1$strate_CE1))
+    data_depp_1$ips_Debut         <- as.numeric(as.character(data_depp_1$ips_Debut))
+    data_depp_1$ips_Mi            <- as.numeric(as.character(data_depp_1$ips_Mi))
+    data_depp_1$ips_CE1           <- as.numeric(as.character(data_depp_1$ips_CE1))
+}
+sapply(data_depp_1, class)
+```
+
+
+# Renaming variables
+
+This part renames columns, and takes into account the fact that data come from three cohort comports different columns names and/or columns.
+
+```{r echo=TRUE}
+# Child and school characteristics
+
+names(data_depp_1)[names(data_depp_1) == "sexe"]                 <- "Sexe"
+names(data_depp_1)[names(data_depp_1) == "strate_CP"]            <- "Categ_Etab_CP"
+names(data_depp_1)[names(data_depp_1) == "strate_CE1"]           <- "Categ_Etab_CE1"
+names(data_depp_1)[names(data_depp_1) == "birthday"]             <- "Date_Naiss"
+names(data_depp_1)[names(data_depp_1) == "CodeEleve"]            <- "ID_Eleve"
+names(data_depp_1)[names(data_depp_1) == "CodeEtablissementCP"]  <- "ID_Etab_CP"
+names(data_depp_1)[names(data_depp_1) == "CodeEtablissementCE1"] <- "ID_Etab_CE1"
+names(data_depp_1)[names(data_depp_1) == "CodeClasseCP"]         <- "ID_Classe_CP"
+names(data_depp_1)[names(data_depp_1) == "CodeClasseCE1"]        <- "ID_Classe_CE1"
+
+# Adapt for column name changes between cohort
+
+if(ANNEE_COHORTE == 2018){
+  
+  names(data_depp_1)[names(data_depp_1) == "IPS_CP"]               <- "IPS_Etab_CP"
+  names(data_depp_1)[names(data_depp_1) == "IPS_CE1"]              <- "IPS_Etab_CE1"  
+  
+} else if(ANNEE_COHORTE == 2019){
+  
+  names(data_depp_1)[names(data_depp_1) == "ips_Debut"]            <- "IPS_Etab_CP"
+  names(data_depp_1)[names(data_depp_1) == "ips_CE1"]              <- "IPS_Etab_CE1"   
+  
+  # this columns are additional in the cohort 2019
+  
+  names(data_depp_1)[names(data_depp_1) == "strate_Mi"]            <- "Categ_Etab_T2"
+  names(data_depp_1)[names(data_depp_1) == "ips_Mi"]               <- "IPS_Etab_T2"
+  names(data_depp_1)[names(data_depp_1) == "CodeClasseMi"]         <- "ID_Classe_T2"
+  
+} else if(ANNEE_COHORTE == 2020){
+  
+  # this columns are additional in the cohort 2020
+  
+  names(data_depp_1)[names(data_depp_1) == "ips_Debut"]            <- "IPS_Etab_CP"
+  names(data_depp_1)[names(data_depp_1) == "ips_CE1"]              <- "IPS_Etab_CE1"   
+  
+  # this columns are additional in the cohort 2019
+  
+  names(data_depp_1)[names(data_depp_1) == "strate_Mi"]            <- "Categ_Etab_T2"
+  names(data_depp_1)[names(data_depp_1) == "ips_Mi"]               <- "IPS_Etab_T2"
+  names(data_depp_1)[names(data_depp_1) == "CodeClasseMi"]         <- "ID_Classe_T2"
+  
+} else {
+  
+  print("ERROR in ANNEE_COHORTE")
+  
+}
+
+# Language - First Period
+
+names(data_depp_1)[names(data_depp_1) == "CPFCOMO_Debut"] <- "T1_Comp_Mots"
+names(data_depp_1)[names(data_depp_1) == "CPFCOPH_Debut"] <- "T1_Comp_Phra"
+names(data_depp_1)[names(data_depp_1) == "CPFCOTE_Debut"] <- "T1_Comp_Text"
+names(data_depp_1)[names(data_depp_1) == "CPFPHPH_Debut"] <- "T1_Manip_Phon"
+names(data_depp_1)[names(data_depp_1) == "CPFPHSY_Debut"] <- "T1_Manip_Syll"
+names(data_depp_1)[names(data_depp_1) == "CPFRLGP_Debut"] <- "T1_Conn_Lettres"
+names(data_depp_1)[names(data_depp_1) == "CPFRLLE_Debut"] <- "T1_Recon_Ecritu_L"
+names(data_depp_1)[names(data_depp_1) == "CPFRLSY_Debut"] <- "T1_Compa_Lettres"
+
+if (ANNEE_COHORTE == 2018){
+  
+names(data_depp_1)[names(data_depp_1) == "CPFRLSI_Debut"] <- "T1_Recon_Lettres"
+
+}
+
+Lang_T1 <- c("T1_Comp_Mots",
+             "T1_Comp_Phra",
+             "T1_Comp_Text",
+             "T1_Manip_Phon",
+             "T1_Manip_Syll",
+             "T1_Conn_Lettres",
+             "T1_Recon_Ecritu_L",
+             "T1_Compa_Lettres")
+
+Add_Lang_T1_2018 <- c("T1_Recon_Lettres")
+
+# Math - First Period
+
+names(data_depp_1)[names(data_depp_1) == "CPMETNOCOEN_Debut"] <- "T1_Ecri_Nombre"
+names(data_depp_1)[names(data_depp_1) == "CPMETNOCORN_Debut"] <- "T1_Lire_Nombre"
+names(data_depp_1)[names(data_depp_1) == "CPMETNOPR_Debut"]   <- "T1_Resoud_Pb"
+names(data_depp_1)[names(data_depp_1) == "CPMUTNOCA_Debut"]   <- "T1_Denombrer"
+names(data_depp_1)[names(data_depp_1) == "CPMUTNOGN_Debut"]   <- "T1_Compa_Nombre"
+names(data_depp_1)[names(data_depp_1) == "CPMUTNOLN_Debut"]   <- "T1_Ligne_Num"
+
+if (ANNEE_COHORTE == 2019){
+  
+  names(data_depp_1)[names(data_depp_1) == "CPMEGAS_Debut"] <- "T1_Assemblage" # Nouvelle Var 1 : Max 8/8, Geometrie / Reproduire un assemblage
+  
+}
+
+if (ANNEE_COHORTE == 2020){
+  
+  names(data_depp_1)[names(data_depp_1) == "CPMEGAS_Debut"] <- "T1_Assemblage" # Nouvelle Var 1 : Max 8/8, Geometrie / Reproduire un assemblage
+  
+}
+
+Math_T1 <- c("T1_Ecri_Nombre",
+             "T1_Lire_Nombre",
+             "T1_Resoud_Pb",
+             "T1_Denombrer",
+             "T1_Compa_Nombre",
+             "T1_Ligne_Num")
+
+Add_Math_T1_2019 <- c("T1_Assemblage") 
+Add_Math_T1_2020 <- c("T1_Assemblage")
+
+# Language - Second Period
+
+names(data_depp_1)[names(data_depp_1) == "CPFCOPH_Mi"]       <- "T2_Comp_Phra"
+names(data_depp_1)[names(data_depp_1) == "CPFLILVMO_Mi"]     <- "T2_Lire_Mots"
+names(data_depp_1)[names(data_depp_1) == "CPFLILVTE_Mi"]     <- "T2_Lire_Text"
+names(data_depp_1)[names(data_depp_1) == "CPFLOE_Mi"]        <- "T2_Ecri_Syll"
+names(data_depp_1)[names(data_depp_1) == "CPFLOR_Mi"]        <- "T2_Ecri_Mots"
+names(data_depp_1)[names(data_depp_1) == "CPFPHPH_Mi"]       <- "T2_Manip_Phon"
+names(data_depp_1)[names(data_depp_1) == "CPFRLGP_Mi"]       <- "T2_Conn_Lettres"
+
+if (ANNEE_COHORTE == 2019){
+  names(data_depp_1)[names(data_depp_1) == "CPFLICP_Mi"]       <- "T2_Comp_Phra_Lu" # Nouvelle Var 2 : Max 8/8, comprendre les phrases lues seul
+} else if (ANNEE_COHORTE == 2018){
+  names(data_depp_1)[names(data_depp_1) == "CPFLILVMOINV_Mi"]  <- "T2_Lire_Mots_inv"
+
+} else if (ANNEE_COHORTE == 2020){
+  names(data_depp_1)[names(data_depp_1) == "CPFLICP_Mi"]       <- "T2_Comp_Phra_Lu"  # new variable in 2021
+}
+
+
+Lang_T2 <- c("T2_Comp_Phra",
+             "T2_Lire_Mots",
+             "T2_Lire_Text",
+             "T2_Ecri_Syll",
+             "T2_Ecri_Mots",
+             "T2_Manip_Phon",
+             "T2_Conn_Lettres")
+
+Add_Lang_T2_2018 <- c("T2_Lire_Mots_inv")
+Add_Lang_T2_2019 <- c("T2_Comp_Phra_Lu")
+Add_Lang_T2_2020 <- c("T2_Comp_Phra_Lu")
+
+# Math - Second Period
+
+names(data_depp_1)[names(data_depp_1) == "CPMNOCACOGN_Mi"]   <- "T2_Compa_Nombre"
+names(data_depp_1)[names(data_depp_1) == "CPMNOCACOLN_Mi"]   <- "T2_Ligne_Num"
+names(data_depp_1)[names(data_depp_1) == "CPMNOCANECLAD_Mi"] <- "T2_Addition"
+names(data_depp_1)[names(data_depp_1) == "CPMNOCANECLSO_Mi"] <- "T2_Soustract"
+names(data_depp_1)[names(data_depp_1) == "CPMNOCANOEN_Mi"]   <- "T2_Ecri_Nombre"
+names(data_depp_1)[names(data_depp_1) == "CPMNOCARP_Mi"]     <- "T2_Resoud_Pb"
+
+Math_T2 <- c("T2_Compa_Nombre",
+             "T2_Ligne_Num",
+             "T2_Addition",
+             "T2_Soustract",
+             "T2_Ecri_Nombre",
+             "T2_Resoud_Pb")
+
+if (ANNEE_COHORTE == 2018){
+  # Language - Third Period
+  names(data_depp_1)[names(data_depp_1) == "CE1COMO"]        <- "T3_Comp_Mots"
+  names(data_depp_1)[names(data_depp_1) == "CE1COPH"]        <- "T3_Comp_Phra"
+  names(data_depp_1)[names(data_depp_1) == "CE1FLOE"]        <- "T3_Ecri_Syll"
+  names(data_depp_1)[names(data_depp_1) == "CE1FLOR"]        <- "T3_Ecri_Mots"
+  names(data_depp_1)[names(data_depp_1) == "CE1LICP"]        <- "T3_Comp_Phra_Lu"
+  names(data_depp_1)[names(data_depp_1) == "CE1LICTEN"]      <- "T3_Comp_Text_Lu"
+  names(data_depp_1)[names(data_depp_1) == "CE1LILVMO"]      <- "T3_Lire_Mots"
+  names(data_depp_1)[names(data_depp_1) == "CE1LILVTE"]      <- "T3_Lire_Text"
+  
+  # Math - Third Period
+  names(data_depp_1)[names(data_depp_1) == "CE1MEGAS"]       <- "T3_Assemblage"
+  names(data_depp_1)[names(data_depp_1) == "CE1MNOCACOLN"]   <- "T3_Ligne_Num"
+  names(data_depp_1)[names(data_depp_1) == "CE1MNOCANECLAD"] <- "T3_Addition"
+  names(data_depp_1)[names(data_depp_1) == "CE1MNOCANECLSO"] <- "T3_Soustract"
+  names(data_depp_1)[names(data_depp_1) == "CE1MNOCANECM"]   <- "T3_Calcul_Mental"
+  names(data_depp_1)[names(data_depp_1) == "CE1MNOCANOEN"]   <- "T3_Ecri_Nombre"
+  names(data_depp_1)[names(data_depp_1) == "CE1MNOCANORC"]   <- "T3_Lire_Nombre"
+  names(data_depp_1)[names(data_depp_1) == "CE1MNOCANORP"]   <- "T3_Repres_Nb"
+  names(data_depp_1)[names(data_depp_1) == "CE1MNOCARP"]     <- "T3_Resoud_Pb"
+  
+} else if (ANNEE_COHORTE == 2019) {
+  # Language - Third Period
+  names(data_depp_1)[names(data_depp_1) == "CE1COMO_CE1"]            <- "T3_Comp_Mots"
+  names(data_depp_1)[names(data_depp_1) == "CE1COPH_CE1"]            <- "T3_Comp_Phra"
+  names(data_depp_1)[names(data_depp_1) == "CE1FLOE_CE1"]            <- "T3_Ecri_Syll"
+  names(data_depp_1)[names(data_depp_1) == "CE1FLOR_CE1"]            <- "T3_Ecri_Mots"
+  names(data_depp_1)[names(data_depp_1) == "CE1LICP_CE1"]            <- "T3_Comp_Phra_Lu"
+  names(data_depp_1)[names(data_depp_1) == "CE1LICTEN_CE1"]          <- "T3_Comp_Text_Lu"
+  names(data_depp_1)[names(data_depp_1) == "CE1LILVMO_CE1"]          <- "T3_Lire_Mots"
+  names(data_depp_1)[names(data_depp_1) == "CE1LILVTE_CE1"]          <- "T3_Lire_Text"
+  
+  # Math - Third Period  
+  names(data_depp_1)[names(data_depp_1) == "CE1MEGAS_CE1"]       <- "T3_Assemblage"
+  names(data_depp_1)[names(data_depp_1) == "CE1MNOCACOLN_CE1"]   <- "T3_Ligne_Num"
+  names(data_depp_1)[names(data_depp_1) == "CE1MNOCANECLAD_CE1"] <- "T3_Addition"
+  names(data_depp_1)[names(data_depp_1) == "CE1MNOCANECLSO_CE1"] <- "T3_Soustract"
+  names(data_depp_1)[names(data_depp_1) == "CE1MNOCANECM_CE1"]   <- "T3_Calcul_Mental"
+  names(data_depp_1)[names(data_depp_1) == "CE1MNOCANOEN_CE1"]   <- "T3_Ecri_Nombre"
+  names(data_depp_1)[names(data_depp_1) == "CE1MNOCANORC_CE1"]   <- "T3_Lire_Nombre"
+  names(data_depp_1)[names(data_depp_1) == "CE1MNOCANORP_CE1"]   <- "T3_Repres_Nb"
+  names(data_depp_1)[names(data_depp_1) == "CE1MNOCARP_CE1"]     <- "T3_Resoud_Pb"
+  
+} else if (ANNEE_COHORTE == 2020) {
+  # Language - Third Period
+  names(data_depp_1)[names(data_depp_1) == "CE1COMO_CE1"]            <- "T3_Comp_Mots"
+  names(data_depp_1)[names(data_depp_1) == "CE1COPH_CE1"]            <- "T3_Comp_Phra"
+  names(data_depp_1)[names(data_depp_1) == "CE1FLOE_CE1"]            <- "T3_Ecri_Syll"
+  names(data_depp_1)[names(data_depp_1) == "CE1FLOR_CE1"]            <- "T3_Ecri_Mots"
+  names(data_depp_1)[names(data_depp_1) == "CE1LICP_CE1"]            <- "T3_Comp_Phra_Lu"
+  names(data_depp_1)[names(data_depp_1) == "CE1LICTEN_CE1"]          <- "T3_Comp_Text_Lu"
+  names(data_depp_1)[names(data_depp_1) == "CE1LILVMO_CE1"]          <- "T3_Lire_Mots"
+  names(data_depp_1)[names(data_depp_1) == "CE1LILVTE_CE1"]          <- "T3_Lire_Text"
+  
+  # Math - Third Period  
+  names(data_depp_1)[names(data_depp_1) == "CE1MEGAS_CE1"]       <- "T3_Assemblage"
+  names(data_depp_1)[names(data_depp_1) == "CE1MNOCACOLN_CE1"]   <- "T3_Ligne_Num"
+  names(data_depp_1)[names(data_depp_1) == "CE1MNOCANECLAD_CE1"] <- "T3_Addition"
+  names(data_depp_1)[names(data_depp_1) == "CE1MNOCANECLSO_CE1"] <- "T3_Soustract"
+  names(data_depp_1)[names(data_depp_1) == "CE1MNOCANECM_CE1"]   <- "T3_Calcul_Mental"
+  names(data_depp_1)[names(data_depp_1) == "CE1MNOCANOEN_CE1"]   <- "T3_Ecri_Nombre"
+  names(data_depp_1)[names(data_depp_1) == "CE1MNOCANORC_CE1"]   <- "T3_Lire_Nombre"
+  names(data_depp_1)[names(data_depp_1) == "CE1MNOCANORP_CE1"]   <- "T3_Repres_Nb"
+  names(data_depp_1)[names(data_depp_1) == "CE1MNOCARP_CE1"]     <- "T3_Resoud_Pb"
+}
+
+Lang_T3 <- c("T3_Comp_Mots",
+             "T3_Comp_Phra",
+             "T3_Ecri_Syll",
+             "T3_Ecri_Mots",
+             "T3_Comp_Phra_Lu",
+             "T3_Comp_Text_Lu",
+             "T3_Lire_Mots",
+             "T3_Lire_Text")
+
+Math_T3 <- c("T3_Assemblage",
+             "T3_Ligne_Num",
+             "T3_Addition",
+             "T3_Soustract",
+             "T3_Calcul_Mental",
+             "T3_Ecri_Nombre",
+             "T3_Lire_Nombre",
+             "T3_Repres_Nb",
+             "T3_Resoud_Pb")
+```
+
+# Covariates to compare 
+
+In order to compare similar tests between 2018 and 2019 and 2020
+
+```{r echo=TRUE}
+
+
+# SIMILAR (n:37) = The following list contains 37 tests for which the exact same tests were evaluated for cohort 1 and cohort 2 with identical number of items per tests
+
+same_notes <- c("T1_Comp_Mots", "T1_Comp_Phra", "T1_Manip_Phon", "T1_Manip_Syll", "T1_Conn_Lettres","T1_Recon_Ecritu_L",
+                   "T1_Ecri_Nombre", "T1_Lire_Nombre", "T1_Resoud_Pb", "T1_Denombrer","T1_Ligne_Num",
+                   "T2_Comp_Phra","T2_Lire_Mots", "T2_Lire_Text", "T2_Ecri_Syll", "T2_Ecri_Mots", "T2_Manip_Phon", "T2_Conn_Lettres",
+                   "T2_Compa_Nombre", "T2_Ligne_Num","T2_Ecri_Nombre", "T2_Resoud_Pb", 
+                   "T3_Comp_Mots", "T3_Comp_Phra",  "T3_Ecri_Syll", "T3_Ecri_Mots", "T3_Comp_Phra_Lu", "T3_Comp_Text_Lu",
+                   "T3_Lire_Mots", "T3_Lire_Text",
+                   "T3_Assemblage", "T3_Ligne_Num", "T3_Calcul_Mental", "T3_Ecri_Nombre", "T3_Lire_Nombre", "T3_Repres_Nb", "T3_Resoud_Pb")
+
+# QUASI SIMILAR (n:44) = the following "notes" list, includes similar skills evaluated for cohort 2018  and 2019 BUT changes have been made for the 7 following tests (not the same number of items inside between the  2 cohorts):  "T1_Comp_Text", "T1_Compa_Lettres" , "T1_Compa_Nombre", "T2_Addition" ,"T2_Soustract",  "T3_Addition" , "T3_Soustract"
+
+notes <- c(Lang_T1, Math_T1, Lang_T2, Math_T2, Lang_T3, Math_T3) 
+
+# ERASED OR ADDED tests between cohort 1 and 2 
+Add_notes_2018 <- c(Add_Lang_T1_2018, Add_Lang_T2_2018) # these 2 tests were in 2018 and got ERASED in 2019 => we wont probably use them in our models
+Add_notes_2019 <- c(Add_Lang_T2_2019, Add_Math_T1_2019) # these 2 tests were added in 2019
+Add_notes_2020 <- c(Add_Lang_T2_2020, Add_Math_T1_2019) # these 2 tests were added in 2020, same in 2019 and 2020 
+
+
+```
+
+
+Note that the data contains `r ncol(data_depp_1)`.
+
+```{r echo=TRUE}
+
+if(ANNEE_COHORTE == 2019){
+  print("Note that for cohort 2019, there exist a different IPS at mid year, and not beginning of year. In particular the number of etablishment presenting a different IPS is: ")
+  print(sum(data_depp_1$IPS_Etab_T2 != data_depp_1$IPS_Etab_CP, na.rm = TRUE))
+  
+  print("In particular the number of etablishment presenting a different category is: ")
+  print(sum(data_depp_1$Categ_Etab_T2 != data_depp_1$Categ_Etab_CP, na.rm = TRUE))
+  
+  ggplot(data_depp_1, aes(x = IPS_Etab_T2, y = IPS_Etab_CP)) +
+    geom_point() +
+    theme_classic() +
+    xlab("IPS (middle of year)") +
+    ylab("IPS (September)") 
+    ggsave(paste0("img/",ANNEE_COHORTE,"/change_ips_during_year_etab_", ANNEE_COHORTE,".pdf"))
+  
+  ggplot(data_depp_1, aes(x = Categ_Etab_T2, y = Categ_Etab_CP)) +
+    geom_jitter() +
+    theme_classic() +
+    xlab("Category (middle of year)") +
+    ylab("Category (September)") 
+  ggsave(paste0("img/",ANNEE_COHORTE,"/change_category_during_year_etab_", ANNEE_COHORTE,".pdf"))
+  
+  
+  # Note that the IPS at middle of year is also missing when it is missing in the first period, therefore the column at middle of year can not be used to impute  beginning of year
+  # sum(is.na(data_depp_1$IPS_Etab_CP) & is.na(data_depp_1$IPS_Etab_T2))
+  # And there are no missing values for Category, so no need to impute
+}
+
+if (ANNEE_COHORTE == 2020){
+  print("Note that for cohort 2020, there exist a different IPS at mid year, and not beginning of year. In particular the number of etablishment presenting a different IPS is: ")
+  print(sum(data_depp_1$ips_Mi != data_depp_1$IPS_Etab_CP, na.rm = TRUE))
+  
+  print("In particular the number of etablishment presenting a different category is: ")
+  print(sum(data_depp_1$strate_Mi != data_depp_1$Categ_Etab_CP, na.rm = TRUE))
+  
+  ggplot(data_depp_1, aes(x = ips_Mi, y = IPS_Etab_CP)) +
+    geom_point() +
+    theme_classic() +
+    xlab("IPS (middle of year)") +
+    ylab("IPS (September)") 
+    ggsave(paste0("img/",ANNEE_COHORTE,"/change_ips_during_year_etab_", ANNEE_COHORTE,".pdf"))
+  
+  ggplot(data_depp_1, aes(x = strate_Mi, y = Categ_Etab_CP)) +
+    geom_jitter() +
+    theme_classic() +
+    xlab("Category (middle of year)") +
+    ylab("Category (September)") 
+  ggsave(paste0("img/",ANNEE_COHORTE,"/change_category_during_year_etab_", ANNEE_COHORTE,".pdf"))
+  
+}
+
+```
+
+
+# Visual inspection of data
+
+```{r eval=FALSE, include=FALSE}
+glimpse(data_depp_1)
+```
+
+```{r eval=FALSE, include=FALSE}
+summary(data_depp_1)
+```
+
+
+# Rename categories
+
+```{r}
+if(ANNEE_COHORTE == 2018){
+data_depp_1$Categ_Etab_CP <- case_when(data_depp_1$Categ_Etab_CP == "Public Hors REP" ~ "Public",
+                                       data_depp_1$Categ_Etab_CP == "Prive" ~ "Private",
+                                       data_depp_1$Categ_Etab_CP == "REP" ~ "REP",
+                                       data_depp_1$Categ_Etab_CP == "REP+" ~ "REP+")
+} else if (ANNEE_COHORTE == 2019){
+data_depp_1$Categ_Etab_CP <- case_when(data_depp_1$Categ_Etab_CP == "Public Hors EP" ~ "Public",
+                                       data_depp_1$Categ_Etab_CP == "Prive" ~ "Private",
+                                       data_depp_1$Categ_Etab_CP == "REP" ~ "REP",
+                                       data_depp_1$Categ_Etab_CP == "REP+" ~ "REP+")
+} else if (ANNEE_COHORTE == 2020){
+data_depp_1$Categ_Etab_CP <- case_when(data_depp_1$Categ_Etab_CP == "Public Hors EP" ~ "Public",
+                                       data_depp_1$Categ_Etab_CP == "Prive" ~ "Private",
+                                       data_depp_1$Categ_Etab_CP == "REP" ~ "REP",
+                                       data_depp_1$Categ_Etab_CP == "REP+" ~ "REP+")
+}
+
+data_depp_1$Categ_Etab_CP <- factor(data_depp_1$Categ_Etab_CP, 
+                                 levels = c("Private","Public", "REP", "REP+"))
+
+
+```
+
+
+
+# Creation of age variable
+
+Note that birth date is stored as YEAR-MONTH in the raw data frame, for example:
+
+```{r}
+print(data_depp_1$Date_Naiss[1:10])
+```
+
+Check if any missing birth date in the data
+
+```{r}
+# Control for missing data in year
+
+if (sum(is.na(data_depp_1$Date_Naiss)) > 0){
+  print(paste0("WARNING: ", sum(is.na(data_depp_1$Date_Naiss)), " row(s) miss birth date"))
+} else {
+  print("GOOD: all birthdates are present")
+}
+
+```
+
+
+```{r}
+# Create year and month from the column Date_Naiss
+
+year     <- as.integer(substring(data_depp_1$Date_Naiss, 1, 4)) 
+month    <- as.integer(substring(data_depp_1$Date_Naiss, 6, 7))
+
+# sanity checks (all months values are in the good range, and all years are with 4 digits after 2000)
+if(!any(month %in% 1:12)){print('WARNING: some month values are out of range')} else {print("GOOD: month values are all coherent")}
+if(!any(year %in% 2000:2021)){print('WARNING: some year values are out of range')} else {print("GOOD: year values are all coherent")}
+
+# Create age
+
+data_depp_1$Age_CP  <- (ANNEE_COHORTE - year)*12 + (9-month)
+
+# Flag normal age or not
+data_depp_1$Age_Cat <- case_when(data_depp_1$Age_CP >= AGE_MIN & data_depp_1$Age_CP < AGE_PRECOCE       ~ "Young",
+                                AGE_PRECOCE <= data_depp_1$Age_CP & data_depp_1$Age_CP < AGE_NORMAL_MOY ~ "Normal inf",
+                                AGE_NORMAL_MOY <= data_depp_1$Age_CP & data_depp_1$Age_CP <= AGE_RETARD ~ "Normal sup",
+                                data_depp_1$Age_CP > AGE_RETARD & data_depp_1$Age_CP <= AGE_MAX         ~ "Late")
+# reorder columns 
+data_depp_1$Age_Cat <- factor(data_depp_1$Age_Cat, levels = c("Young", "Normal inf", "Normal sup", "Late"))
+
+# graph 
+legend_title <- "Age categories"
+ggplot(data_depp_1, aes(x = Age_CP, fill = Age_Cat)) +
+ geom_histogram(binwidth = 1, color = "black", alpha = 0.6) +
+  scale_fill_manual(legend_title,
+    values = c("Young" = "green", "Late" = "red", "Normal inf" = "lightblue", "Normal sup" = "darkblue")) +
+  geom_vline(xintercept = AGE_PRECOCE, col = "green") +
+  geom_vline(xintercept = AGE_RETARD, col = "red") +
+ theme_minimal() +
+  xlab("Age in 1st grade (months)") +
+  ylab("Number of children")
+ggsave(paste0("img/",ANNEE_COHORTE,"/age_distribution_cohort_before_outliers_treatment_", ANNEE_COHORTE,".pdf"))
+
+
+```
+
+# Remove outliers with age below AGE_MIN or above AGE_MAX.
+
+Number of remaining observations before removal of age outliers is `r nrow(data_depp_1)`
+
+```{r echo=TRUE}
+
+data_depp_1$age_abnormality <- ifelse(data_depp_1$Age_CP < AGE_MIN |  data_depp_1$Age_CP > AGE_MAX, TRUE, FALSE)
+print(paste0("Number of abnormal ages (below AGE_MIN and above AGE_MAX): ", sum(data_depp_1$age_abnormality)))
+
+# sanity check
+
+table(data_depp_1$age_abnormality)                     # n = 152    # (2020) 374
+nrow(data_depp_1[is.na(data_depp_1$age_abnormality),]) # n = 19     # (2020)  60
+nrow(data_depp_1[data_depp_1$age_abnormality,])        # n = 171    # (2020)  434
+ 
+# graph 
+legend_title <- "Age categories"
+ggplot(data_depp_1, aes(x = Age_CP, fill = Age_Cat)) +
+ geom_histogram(binwidth = 1, color = "black", alpha = 0.6) +
+  scale_fill_manual(legend_title,
+    values = c("Young" = "green", "Late" = "red", "Normal inf" = "lightblue", "Normal sup" = "darkblue")) +
+  geom_vline(xintercept = AGE_PRECOCE, col = "green") +
+  geom_vline(xintercept = AGE_RETARD, col = "red") +
+ theme_minimal() +
+  xlab("Age in 1st grade (months)") +
+  ylab("Number of children")
+  ggsave(paste0("img/",ANNEE_COHORTE,"/age_distribution_cohort_after_outliers_treatment_", ANNEE_COHORTE,".pdf"))
+  
+# Replace Age outliers with NA 
+  
+data_depp_1$Age_CP <- ifelse(data_depp_1$age_abnormality == TRUE , NA, data_depp_1$Age_CP) 
+nrow(data_depp_1[is.na(data_depp_1$Age_CP),]) # n = 434
+
+```
+
+Number of observations with age outliers is `r nrow(data_depp_1[data_depp_1$age_abnormality,])`
+
+
+# Analyzing missings values 
+
+```{r echo=TRUE}
+
+number_of_missing_values <- n_miss(data_depp_1)
+total_number_of_items <- nrow(data_depp_1)*ncol(data_depp_1)
+percentage_of_missing_values <- 100.* number_of_missing_values / total_number_of_items
+number_of_observations_with_NA <- nrow(data_depp_1) - nrow(na.omit(data_depp_1))
+
+print(paste0("The total number of missing values is ", number_of_missing_values, 
+             " while the total of values is ", total_number_of_items, ". ",
+             "This corresponds to a percentage of ", round(percentage_of_missing_values,3), "%. ",
+             "Number of observation with at least one missing value: ", number_of_observations_with_NA))
+```
+
+Print the number of missing  values per column.
+
+```{r}
+sapply(data_depp_1, function(x) sum(is.na(x)))
+```
+
+Do we observe a link between missing values and category of the school?
+
+
+```{r}
+data_depp_1 %>% 
+  group_by(Categ_Etab_CP) %>%
+   summarise_all(~sum(is.na(.)))  %>% 
+  transmute(Categ_Etab_CP, sumNA = rowSums(.[-1])) %>% # sum the rows but not the first one
+  ggplot(aes(x = Categ_Etab_CP, y = sumNA)) +
+  geom_point(size = 3) +
+  theme_classic()
+  ggsave(paste0("img/",ANNEE_COHORTE, "/sum_missing_values_per_category_", ANNEE_COHORTE,".pdf"))
+```
+
+
+# Tests Abnormalities : Analyzing 5 aberrant variables (T2-T3 Lire Mots, Text)
+
+We observe that for these tests (T2_Lire_Mots, T2_Lire_Mots_inv, T2_Lire_Text, T3_Lire_Mots, and T3_Lire_Text) outliers are reported. We redefine these variables from 0 till maximum 80 to 150, where most of the kids (> 97%) are. For the others we transform as NA.
+
+## T2_Lire_Mots
+
+```{r echo=TRUE}
+data_depp_1 %>%
+  ggplot(aes(y = T2_Lire_Mots)) +
+  geom_boxplot() +
+  ggtitle("Before treatment")
+
+# T2_Lire_Mots : from max 30 to max 100
+print("Number of values replaced by NA for T2_Lire_Mots :" )
+print(nrow(data_depp_1[data_depp_1$T2_Lire_Mots > 100, ]))
+
+data_depp_1$T2_Lire_Mots[data_depp_1$T2_Lire_Mots > 100] <- NA # we replace only this note when > 100 by NA, but not the student
+
+data_depp_1 %>%
+  ggplot(aes(y = T2_Lire_Mots)) +
+  geom_boxplot() +
+  ggtitle("After treatment")
+```
+
+## T2_Lire_Mots_inv
+
+Only if cohort in 2018.
+
+```{r}
+if (ANNEE_COHORTE == 2018){
+ data_depp_1 %>%
+  ggplot(aes(y = T2_Lire_Mots_inv)) +
+  geom_boxplot() +
+  ggtitle("Before treatment")
+  print("Number of values replaced by NA for T2_Mots_inv: ")
+  print(nrow(data_depp_1[data_depp_1$T2_Lire_Mots_inv > 90, ]))
+  data_depp_1$T2_Lire_Mots_inv[data_depp_1$T2_Lire_Mots_inv > 90] <- NA
+  
+  data_depp_1 %>%
+    ggplot(aes(y = T2_Lire_Mots_inv)) +
+    geom_boxplot() +
+    ggtitle("After treatment") 
+}
+```
+
+
+## T2_Lire_Text
+
+```{r}
+
+data_depp_1 %>%
+  ggplot(aes(y = T2_Lire_Text)) +
+  geom_boxplot() +
+  ggtitle("Before treatment")
+print("Number of values replaced by NA for T2_Lire_Text: ")
+print(nrow(data_depp_1[data_depp_1$T2_Lire_Text > 195, ]))
+data_depp_1$T2_Lire_Text[data_depp_1$T2_Lire_Text > 195] <- NA
+data_depp_1 %>%
+  ggplot(aes(y = T2_Lire_Text)) +
+  geom_boxplot() +
+  ggtitle("After treatment")
+
+```
+
+
+## T3_Lire_Mots
+
+```{r}
+
+data_depp_1 %>%
+  ggplot(aes(y = T3_Lire_Mots)) +
+  geom_boxplot() +
+  ggtitle("Before treatment")
+print("Number of values replaced by NA for T3_Lire_Mots: ")
+print(nrow(data_depp_1[data_depp_1$T3_Lire_Mots > 93, ]))
+data_depp_1$T3_Lire_Mots[data_depp_1$T3_Lire_Mots > 93] <- NA
+data_depp_1 %>%
+  ggplot(aes(y = T3_Lire_Mots)) +
+  geom_boxplot() +
+  ggtitle("After treatment")
+
+```
+
+
+## T3_Lire_Text
+
+```{r echo=TRUE}
+
+data_depp_1 %>%
+  ggplot(aes(y = T3_Lire_Text)) +
+  geom_boxplot() +
+  ggtitle("Before treatment")
+print("Number of values replaced by NA for T3_Lire_Text: ")
+print(nrow(data_depp_1[data_depp_1$T3_Lire_Text > 136, ]))
+data_depp_1$T3_Lire_Text[data_depp_1$T3_Lire_Text > 136] <- NA
+data_depp_1 %>%
+  ggplot(aes(y = T3_Lire_Text)) +
+  geom_boxplot() +
+  ggtitle("After treatment")
+
+```
+
+
+Another cut is proposed on the CSEN document, this is implemented but stored with "_cut" to distinguish it from the previous values.
+This different cut matches the original min and max from the cognitive tests. But unfortunately, loats of data were above these maximum.
+
+```{r}
+
+data_depp_1$T2_Lire_Mots_Cut     <- as.numeric(ifelse(data_depp_1$T2_Lire_Mots > 30, NaN, data_depp_1$T2_Lire_Mots))
+
+if(ANNEE_COHORTE == 2018){
+data_depp_1$T2_Lire_Mots_inv_Cut <- as.numeric(ifelse(data_depp_1$T2_Lire_Mots_inv > 30, NaN, data_depp_1$T2_Lire_Mots_inv))
+}
+data_depp_1$T2_Lire_Text_Cut     <- as.numeric(ifelse(data_depp_1$T2_Lire_Text > 29, NaN, data_depp_1$T2_Lire_Text))
+
+
+data_depp_1$T3_Lire_Mots_Cut     <- as.numeric(ifelse(data_depp_1$T3_Lire_Mots > 60, NaN, data_depp_1$T3_Lire_Mots))
+data_depp_1$T3_Lire_Text_Cut     <- as.numeric(ifelse(data_depp_1$T3_Lire_Text > 102, NaN, data_depp_1$T3_Lire_Text))
+Fluency_With_Cut <- c("T2_Lire_Mots_Cut", "T2_Lire_Text_Cut", "T3_Lire_Mots_Cut", "T3_Lire_Text_Cut") # fluency with hardcuts
+
+
+```
+
+To compare, here are the other covariates.
+
+```{r}
+hist(data_depp_1$T2_Lire_Mots)
+
+if(ANNEE_COHORTE == 2018){
+  hist(data_depp_1$T2_Lire_Mots_inv)
+}
+hist(data_depp_1$T2_Lire_Text)
+hist(data_depp_1$T3_Lire_Mots)
+hist(data_depp_1$T3_Lire_Text)
+
+```
+
+
+# Identify when all scores are at 0 or NA at a specific time (T1, T2, or T3)
+
+Some series are full with 0 even if the child is supposed to be present. 
+For example when looking at whole years: several examples contain either 0's or NA's on the whole line in T1, but show good results in T2 and T3, and are not counted as absent in T1.
+
+
+```{r echo=TRUE}
+if(ANNEE_COHORTE == 2018){
+  
+  data_depp_1$T1_FR_ZNA <- rowSums(is.na(data_depp_1[, c(Lang_T1, Add_Lang_T1_2018)]) | data_depp_1[, c(Lang_T1, Add_Lang_T1_2018)] == 0)
+  data_depp_1$T1_MA_ZNA <- rowSums(is.na(data_depp_1[, Math_T1]) | data_depp_1[, Math_T1] == 0)
+  data_depp_1$T2_FR_ZNA <- rowSums(is.na(data_depp_1[, c(Lang_T2, Add_Lang_T2_2018)]) | data_depp_1[, c(Lang_T2, Add_Lang_T2_2018)] == 0)
+  data_depp_1$T2_MA_ZNA <- rowSums(is.na(data_depp_1[, Math_T2]) | data_depp_1[, Math_T2] == 0)
+  data_depp_1$T3_FR_ZNA <- rowSums(is.na(data_depp_1[, Lang_T3]) | data_depp_1[, Lang_T3] == 0)
+  data_depp_1$T3_MA_ZNA <- rowSums(is.na(data_depp_1[, Math_T3]) | data_depp_1[, Math_T3] == 0)
+  
+} else if (ANNEE_COHORTE == 2019){
+  
+  data_depp_1$T1_FR_ZNA <- rowSums(is.na(data_depp_1[, Lang_T1]) | data_depp_1[,Lang_T1] == 0)
+  data_depp_1$T1_MA_ZNA <- rowSums(is.na(data_depp_1[, c(Math_T1, Add_Math_T1_2019)]) | data_depp_1[, c(Math_T1, Add_Math_T1_2019)] == 0)
+  data_depp_1$T2_FR_ZNA <- rowSums(is.na(data_depp_1[, c(Lang_T2, Add_Lang_T2_2019)]) | data_depp_1[, c(Lang_T2, Add_Lang_T2_2019)] == 0)
+  data_depp_1$T2_MA_ZNA <- rowSums(is.na(data_depp_1[, Math_T2]) | data_depp_1[, Math_T2] == 0)
+  data_depp_1$T3_FR_ZNA <- rowSums(is.na(data_depp_1[, Lang_T3]) | data_depp_1[, Lang_T3] == 0)
+  data_depp_1$T3_MA_ZNA <- rowSums(is.na(data_depp_1[, Math_T3]) | data_depp_1[, Math_T3] == 0)
+
+} else if (ANNEE_COHORTE == 2020){
+  
+  data_depp_1$T1_FR_ZNA <- rowSums(is.na(data_depp_1[, Lang_T1]) | data_depp_1[,Lang_T1] == 0)
+  data_depp_1$T1_MA_ZNA <- rowSums(is.na(data_depp_1[, c(Math_T1, Add_Math_T1_2020)]) | data_depp_1[, c(Math_T1, Add_Math_T1_2020)] == 0)
+  data_depp_1$T2_FR_ZNA <- rowSums(is.na(data_depp_1[, c(Lang_T2, Add_Lang_T2_2020)]) | data_depp_1[, c(Lang_T2, Add_Lang_T2_2020)] == 0)
+  data_depp_1$T2_MA_ZNA <- rowSums(is.na(data_depp_1[, Math_T2]) | data_depp_1[, Math_T2] == 0)
+  data_depp_1$T3_FR_ZNA <- rowSums(is.na(data_depp_1[, Lang_T3]) | data_depp_1[, Lang_T3] == 0)
+  data_depp_1$T3_MA_ZNA <- rowSums(is.na(data_depp_1[, Math_T3]) | data_depp_1[, Math_T3] == 0)
+}
+
+if(ANNEE_COHORTE == 2018  | ANNEE_COHORTE == 2019){
+for (level in c("T1_FR_ZNA", "T1_MA_ZNA", "T2_FR_ZNA", "T2_MA_ZNA", "T3_FR_ZNA", "T3_MA_ZNA")) {
+  
+   ggplot(data_depp_1, aes(x=as.factor(data_depp_1[,level]))) +
+    geom_bar(fill = "steelblue", alpha = 0.5, color = "cyan") +
+    geom_text(stat='count', aes(label=..count..), vjust=-0.5) +
+    theme_minimal() +
+    xlab("Number of 0 or NA") +
+    ylab("")
+    ggsave(paste0("img/",ANNEE_COHORTE,"/number_of_0_or_NA_in_",level, "_cohort_", ANNEE_COHORTE,".pdf")) 
+  
+}
+} else if (ANNEE_COHORTE == 2020){
+  for (level in c("T1_FR_ZNA", "T1_MA_ZNA", "T2_FR_ZNA", "T2_MA_ZNA")) {
+  
+   ggplot(data_depp_1, aes(x=as.factor(data_depp_1[,level]))) +
+    geom_bar(fill = "steelblue", alpha = 0.5, color = "cyan") +
+    geom_text(stat='count', aes(label=..count..), vjust=-0.5) +
+    theme_minimal() +
+    xlab("Number of 0 or NA") +
+    ylab("")
+    ggsave(paste0("img/",ANNEE_COHORTE,"/number_of_0_or_NA_in_",level, "_cohort_", ANNEE_COHORTE,".pdf")) 
+  
+}
+}
+```
+This allows to print some of the rows:
+
+```{r}
+
+# Checking : To have a look at the lines, for example
+data_depp_1[data_depp_1$T1_FR_ZNA > 7, Lang_T1][1:5,]
+data_depp_1[data_depp_1$T2_FR_ZNA > 6, Lang_T2][1:5,]
+data_depp_1[data_depp_1$T3_FR_ZNA > 6, Lang_T3][1:5,]
+data_depp_1[data_depp_1$T1_MA_ZNA > 4, Math_T1][1:5,]
+data_depp_1[data_depp_1$T2_MA_ZNA > 4, Math_T2][1:5,]
+data_depp_1[data_depp_1$T3_MA_ZNA > 7, Math_T3][1:5,]
+
+```
+
+Number of children with series of missing values:
+
+- T1 Language: `r nrow(data_depp_1[data_depp_1$T1_FR_ZNA > length(Lang_T1) - 2,])`
+- T1 Maths: `r nrow(data_depp_1[data_depp_1$T1_MA_ZNA > length(Math_T1) - 2,])`
+
+- T2 Language: `r nrow(data_depp_1[data_depp_1$T1_FR_ZNA > length(Lang_T2) - 2,])`
+- T2 Maths: `r nrow(data_depp_1[data_depp_1$T1_MA_ZNA > length(Math_T2) - 2,])`
+
+- T3 Language: `r nrow(data_depp_1[data_depp_1$T1_FR_ZNA > length(Lang_T3) - 2,])`
+- T3 Maths: `r nrow(data_depp_1[data_depp_1$T1_MA_ZNA > length(Math_T3) - 2,])`
+
+```{r}
+  
+data_depp_1$test_abnormalities_Lang_T1 <- ifelse(data_depp_1$T1_FR_ZNA > length(Lang_T1) - 3, 1, 0) 
+data_depp_1$test_abnormalities_Math_T1 <- ifelse(data_depp_1$T1_MA_ZNA > length(Math_T1) - 2 , 1, 0) 
+data_depp_1$test_abnormalities_T1      <- ifelse(data_depp_1$test_abnormalities_Lang_T1 == 1 & data_depp_1$test_abnormalities_Math_T1 == 1, 1, 0)
+data_depp_1$test_abnormalities_Lang_T2 <- ifelse(data_depp_1$T2_FR_ZNA > length(Lang_T2) - 3, 1, 0) 
+data_depp_1$test_abnormalities_Math_T2 <- ifelse(data_depp_1$T2_MA_ZNA > length(Math_T2) - 2 , 1, 0) 
+data_depp_1$test_abnormalities_T2      <- ifelse(data_depp_1$test_abnormalities_Lang_T2 == 1 & data_depp_1$test_abnormalities_Math_T2 == 1, 1, 0)
+
+data_depp_1$test_abnormalities_Lang_T3 <- ifelse(data_depp_1$T3_FR_ZNA > length(Lang_T3) - 3, 1, 0) 
+data_depp_1$test_abnormalities_Math_T3 <- ifelse(data_depp_1$T3_MA_ZNA > length(Math_T3) - 3, 1, 0) 
+data_depp_1$test_abnormalities_T3      <- ifelse(data_depp_1$test_abnormalities_Lang_T3 == 1 & data_depp_1$test_abnormalities_Math_T3 == 1, 1, 0)
+
+data_depp_1$totally_ab <- ifelse((data_depp_1$test_abnormalities_T1 == 1) &
+                                           (data_depp_1$test_abnormalities_T2 == 1) &
+                                           (data_depp_1$test_abnormalities_T3 == 1), 1, 0)
+table(data_depp_1$totally_ab)
+
+```
+
+
+```{r}
+
+upset(data_depp_1[, c("test_abnormalities_Lang_T1", "test_abnormalities_Math_T1", "test_abnormalities_Lang_T2", "test_abnormalities_Math_T2", "test_abnormalities_Lang_T3", "test_abnormalities_Math_T3")], nsets = 6)
+
+```
+
+Remove totally abnormal students.
+
+```{r}
+
+print("Size of dataframe before the removal of students with high abnormalities: ")
+print(nrow(data_depp_1))
+
+data_depp_1 <- data_depp_1[!data_depp_1$totally_ab,]
+print("Size of dataframe after the removal of students with high abnormalities: ")
+print(nrow(data_depp_1))
+```
+
+In cases with many 0's and NA's on a a series of test on a period, the child is considered absent, the O's and NA's are replaced by NA's on the whole line. This allows to avoid considering that the child had 0 at this exam, but in fact was not present.
+
+Example before replacing with NA:
+```{r}
+head(data_depp_1[data_depp_1$test_abnormalities_T1 == 1, Lang_T1])
+```
+
+
+```{r}
+if (ANNEE_COHORTE == 2018){
+  data_depp_1[data_depp_1$test_abnormalities_T1 == 1, c(Math_T1, Lang_T1, Add_Lang_T1_2018)] <- NA
+  data_depp_1[data_depp_1$test_abnormalities_T2 == 1, c(Math_T2, Lang_T2, Add_Lang_T2_2018)] <- NA
+  data_depp_1[data_depp_1$test_abnormalities_T3 == 1, c(Math_T1, Lang_T3)] <- NA
+} else if (ANNEE_COHORTE == 2019){
+  data_depp_1[data_depp_1$test_abnormalities_T1 == 1, c(Math_T1, Lang_T1, Add_Math_T1_2019)] <- NA
+  data_depp_1[data_depp_1$test_abnormalities_T2 == 1, c(Math_T2, Lang_T2, Add_Lang_T2_2019)] <- NA
+  data_depp_1[data_depp_1$test_abnormalities_T3 == 1, c(Math_T1, Lang_T3)] <- NA
+} else if (ANNEE_COHORTE == 2020){
+  data_depp_1[data_depp_1$test_abnormalities_T1 == 1, c(Math_T1, Lang_T1, Add_Math_T1_2020)] <- NA
+  data_depp_1[data_depp_1$test_abnormalities_T2 == 1, c(Math_T2, Lang_T2, Add_Lang_T2_2020)] <- NA
+  data_depp_1[data_depp_1$test_abnormalities_T3 == 1, c(Math_T1, Lang_T3)] <- NA
+}
+```
+
+We can check that it replaced everything with NA:
+
+```{r}
+head(data_depp_1[data_depp_1$test_abnormalities_T1 == 1, Lang_T1])
+```
+
+# Creation of other variables
+
+## Class size
+
+```{r}
+# Creation of unique ID per class per concatenation of etab and class ids is needed to get a unique identifier
+data_depp_1$ID_etab_class <- paste(data_depp_1$ID_Etab_CP, data_depp_1$ID_Classe_CP, sep = "_")
+```
+
+In total, there are `r length(unique(data_depp_1$ID_etab_class))` number of classes.
+
+
+```{r}
+
+Nb_Per_Class <- data_depp_1[, c("ID_etab_class", "ID_Eleve")] %>%
+  group_by(ID_etab_class) %>%
+  summarise(Taille_Classe = n())
+data_depp_1 <- merge(Nb_Per_Class, data_depp_1, by = "ID_etab_class")
+print(paste0("Number of observations with size above SEUIL_SUP_CLASS: ", nrow(Nb_Per_Class[(Nb_Per_Class$Taille_Classe > SEUIL_SUP_CLASS ),])))
+print(paste0("Number of observations with size below SEUIL_INF_CLASS: ", nrow(Nb_Per_Class[(Nb_Per_Class$Taille_Classe < SEUIL_INF_CLASS ),])))
+rm(Nb_Per_Class)
+
+```
+
+## Labels "extreme" class size 
+Note that the class sizes above SEUIL_SUP and below SEUIL_INF are `r nrow(data_depp_1[(data_depp_1$Taille_Classe < SEUIL_INF_CLASS | data_depp_1$Taille_Classe > SEUIL_SUP_CLASS ), ])`.
+
+```{r}
+data_depp_1$class_size_abnormalities <- ifelse(data_depp_1$Taille_Classe > SEUIL_SUP_CLASS, TRUE, FALSE)
+data_depp_1$class_size_models <- ifelse(data_depp_1$Taille_Classe < SEUIL_INF_CLASS | data_depp_1$Taille_Classe > SEUIL_SUP_CLASS, TRUE, FALSE)
+```
+
+
+## Creation of Class size in Categories : small < 13 vs. normal >= 13
+
+Creation of a new variable "class size" (continuous) and "class size category" (categorical)
+- small class < 13 children / class
+- normal >= 13 children / class
+
+```{r}
+data_depp_1$Taille_Classe_Cat <- ifelse(data_depp_1$Taille_Classe < SEUIL_TAILLE, "small_class", "normal")
+table(data_depp_1$Taille_Classe_Cat)
+
+```
+
+
+
+# Histogram of class with categories
+
+```{r}
+legend_title = "School categories"
+data_depp_1 %>%
+  ggplot(aes(x = Taille_Classe, fill = Categ_Etab_CP)) +
+  geom_histogram(binwidth = 1, alpha = 0.9, color = "grey20") +
+  theme_bw() +
+  scale_fill_manual(legend_title, values=c("aquamarine4", "aquamarine2", "coral3","darkred")) +
+  xlab("Number of students per class") +
+  ylab("Number of children concerned") +
+  geom_vline(xintercept = SEUIL_INF_CLASS, col = "blue") +
+  geom_vline(xintercept = SEUIL_SUP_CLASS, col = "blue")
+    ggsave(paste0("img/",ANNEE_COHORTE,"/histogram_class_raw_data_", ANNEE_COHORTE,".pdf"))
+    
+data_depp_1[!data_depp_1$class_size_abnormalities, ] %>%
+  ggplot(aes(x = Taille_Classe, fill = Categ_Etab_CP)) +
+  geom_histogram(binwidth = 1, alpha = 0.9, color = "grey20") +
+  theme_bw() +
+  scale_fill_manual(legend_title, values=c("aquamarine4", "aquamarine2", "coral3","darkred")) +
+  xlab("Number of students per class") +
+  ylab("Number of children concerned") +
+  geom_vline(xintercept = SEUIL_INF_CLASS, col = "blue") +
+  geom_vline(xintercept = SEUIL_SUP_CLASS, col = "blue")
+    ggsave(paste0("img/",ANNEE_COHORTE,"/histogram_class_with_class_size_between_SEUIL_INF_SUP_", ANNEE_COHORTE,".pdf"))
+```
+
+
+# Creation of Number of children per school
+
+```{r}
+Nb_Per_School <- data_depp_1[, c("ID_Etab_CP", "ID_Eleve")] %>%
+  group_by(ID_Etab_CP) %>%
+  summarise(Taille_Ecole = n())
+data_depp_1 <- merge(Nb_Per_School, data_depp_1, by = "ID_Etab_CP")
+rm(Nb_Per_School)
+sum(unique(data_depp_1$Taille_Ecole)) 
+```
+
+There are n = `r length(unique(data_depp_1$ID_Etab_CP))` schools
+
+```{r}
+# Number of Children per school
+data_depp_1 %>%
+  ggplot(aes(x = Taille_Ecole, fill = Categ_Etab_CP)) +
+  geom_histogram(binwidth = 3, alpha = 0.9, color = "grey20") +
+  theme_bw() +
+  scale_fill_manual(values=c("aquamarine4", "aquamarine2", "coral3","darkred")) +
+  xlab("Number of children per school") +
+  ylab("Number of schools")
+    ggsave(paste0("img/",ANNEE_COHORTE,"/histogram_children_per_school_raw_data_", ANNEE_COHORTE,".pdf"))
+    
+```
+
+
+# Identification of Classes with NA in Sexe
+
+```{r}
+
+# How many classes with NA
+
+classes_without_Sexe <- unique(data_depp_1[is.na(data_depp_1$Sexe), c("ID_etab_class")]) 
+print(classes_without_Sexe)
+
+# Erase classes with NA for Sexe
+
+data_depp_1 <- data_depp_1[ ! (data_depp_1$ID_etab_class %in% classes_without_Sexe) , ]
+
+```
+
+# Creation of Sexe variable
+
+```{r echo=TRUE}
+
+# For 2019 => Sexe 1 = Boys , Sexe 2 = Girls
+
+if(ANNEE_COHORTE == 2018){
+  
+data_depp_1$Sexe <- case_when(data_depp_1$Sexe == "Fille" ~ "Girls",
+                              data_depp_1$Sexe == "Garcon" ~ "Boys")
+data_depp_1$Sexe_Num <- case_when(data_depp_1$Sexe == "Girls" ~ -0.5,
+                                  data_depp_1$Sexe == "Boys" ~ 0.5)
+data_depp_1$Sexe_Num <- as.numeric(data_depp_1$Sexe_Num)
+
+} else if (ANNEE_COHORTE == 2019){
+  
+data_depp_1$Sexe <- case_when(data_depp_1$Sexe == "2" ~ "Girls",
+                              data_depp_1$Sexe == "1" ~ "Boys")
+data_depp_1$Sexe_Num <- case_when(data_depp_1$Sexe == "Girls" ~ -0.5,
+                                  data_depp_1$Sexe == "Boys" ~ 0.5)
+data_depp_1$Sexe_Num <- as.numeric(data_depp_1$Sexe_Num)
+
+} else if (ANNEE_COHORTE == 2020){
+  
+data_depp_1$Sexe <- case_when(data_depp_1$Sexe == "2" ~ "Girls",
+                              data_depp_1$Sexe == "1" ~ "Boys")
+
+data_depp_1$Sexe_Num <- case_when(data_depp_1$Sexe == "Girls" ~ -0.5,
+                                  data_depp_1$Sexe == "Boys" ~ 0.5)
+
+data_depp_1$Sexe_Num <- as.numeric(data_depp_1$Sexe_Num)
+}
+
+# Sexe to factor
+data_depp_1$Sexe <- as.factor(data_depp_1$Sexe)
+table(data_depp_1$Sexe)
+
+```
+
+
+# Delete intermediary columns
+
+```{r}
+cols.dont.want <- c("T1_FR_ZNA", "T2_FR_ZNA", "T3_FR_ZNA", "T1_MA_ZNA","T2_MA_ZNA", "T3_MA_ZNA") 
+data_depp_1 <- data_depp_1[, ! names(data_depp_1) %in% cols.dont.want, drop = F]
+
+```
+
+# Imputation
+
+Note that imputation is performed after outliers management.
+
+
+```{r}
+cols.dont.want.for.imputation <- c("Date_Naiss", 
+                                   "ID_Etab_CP", 
+                                   "ID_Eleve",
+                                   "ID_Etab_CE1",
+                                   "ID_etab_class", 
+                                   "ID_Classe_CP",
+                                   "ID_Classe_CE1",
+                                   "Age_Cat", 
+                                   "age_abnormality",
+                                   "test_abnormalities_Math_T1", 
+                                   "test_abnormalities_Lang_T1",
+                                   "test_abnormalities_T1",
+                                   "test_abnormalities_Lang_T2",
+                                   "test_abnormalities_Math_T2",
+                                   "test_abnormalities_T2",
+                                  "test_abnormalities_Lang_T3",
+                                  "test_abnormalities_Math_T3",
+                                  "test_abnormalities_T3",
+                                  "totally_ab",
+                                  "Taille_Classe_Cat",
+                                  "class_size_abnormalities",
+                                  "class_size_models")
+if (ANNEE_COHORTE == 2019){
+  cols.dont.want.for.imputation <- c(cols.dont.want.for.imputation, 
+                                     "CodeEtablissementMi",
+                                     "IPS_Etab_T2",
+                                     "ID_Classe_T2",
+                                     "Categ_Etab_T2")
+}
+
+if (ANNEE_COHORTE == 2020){
+  cols.dont.want.for.imputation <- c(cols.dont.want.for.imputation, 
+                                     "strate_Mi",
+                                     "ips_Mi",
+                                     "CodeClasseMi",
+                                     "CodeEtablissementMi")
+}
+
+
+```
+
+
+Before imputation, check that columns are in factor, numeric, or integer format, if not it does not work.
+
+```{r}
+sapply(data_depp_1[, !names(data_depp_1) %in% cols.dont.want.for.imputation], class)
+```
+
+
+
+```{r}
+
+data_depp_imputed <- data_depp_1
+mice_mice <- mice(data = data_depp_1[, !names(data_depp_1) %in% cols.dont.want.for.imputation], 
+                  m = 1, 
+                  method = "pmm",
+                  seed=500, # reproducibility
+                  remove.collinear = FALSE) # because the cut and non cut columns are quasi colinear
+X.mice <- complete(mice_mice, 1)
+data_depp_imputed[, !names(data_depp_imputed) %in% cols.dont.want.for.imputation] <- X.mice
+
+## if missMDA is used
+# library(missMDA)
+# ncp.pca <- estim_ncpMCA(data_depp_1[, !names(data_depp_1) %in% cols.dont.want.for.imputation])
+# pca <- MIMCA(data_depp_1[, !names(data_depp_1) %in% cols.dont.want.for.imputation], ncp = ncp.pca)
+# data_depp_imputed[, !names(data_depp_imputed) %in% cols.dont.want.for.imputation] <- pca$comp
+
+```
+
+
+```{r}
+# now that some data are imputed, fill remaining columns that could benefit from it
+data_depp_imputed$Sexe_Num <- ifelse(data_depp_imputed$Sexe == "Girls", -0.5, 0.5)
+
+
+# Age
+data_depp_imputed$age_abnormality <- ifelse(data_depp_imputed$Age_CP < AGE_MIN |  data_depp_imputed$Age_CP > AGE_MAX, TRUE, FALSE)
+data_depp_imputed$Age_Cat <- case_when(data_depp_imputed$Age_CP >= AGE_MIN & data_depp_imputed$Age_CP < AGE_PRECOCE       ~ "Young",
+                                AGE_PRECOCE <= data_depp_imputed$Age_CP & data_depp_imputed$Age_CP < AGE_NORMAL_MOY ~ "Normal inf",
+                                AGE_NORMAL_MOY <= data_depp_imputed$Age_CP & data_depp_imputed$Age_CP <= AGE_RETARD ~ "Normal sup",
+                                data_depp_imputed$Age_CP > AGE_RETARD & data_depp_imputed$Age_CP <= AGE_MAX         ~ "Late")
+data_depp_imputed$Age_Cat <- factor(data_depp_imputed$Age_Cat, levels = c("Young", "Normal inf", "Normal sup", "Late"))
+```
+
+# Save data
+
+```{r}
+# Data set with missing values - na.omit() can be run at each beginning of analysis
+data_depp <- data_depp_1
+
+```
+
+
+```{r}
+rm(data_depp_1)
+rm(cols.dont.want)
+rm(cols.dont.want.for.imputation)
+rm(X.mice)
+rm(mice_mice)
+rm(month)
+rm(year)
+rm(ind)
+```
+
+
+```{r}
+# save the whole image
+save.image(file = paste0("./data/cohort_", ANNEE_COHORTE, "_after_1_preprocess.RData"))
+
+```

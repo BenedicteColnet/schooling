@@ -1,0 +1,430 @@
+---
+title: "8_Data_Models_reg"
+author:
+  - Pauline Martinot [UNICOG, NeuroSpin]
+  - Bénédicte Colnet [Inria, Paris-Saclay]
+date: "09/01/2022"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: 3
+  html_document:
+    toc: yes
+    toc_depth: '3'
+    df_print: paged
+---
+
+# DATA LOADING for all Regression Models
+
+### Parameters
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+# Parameters to set before launch of the pipeline
+
+ANNEE_COHORTE = "2020" # 2019 #2020
+IMPUTED =  "imputed"# "imputed" #"imputed" #"imputed" "non-imputed" 
+
+# Library
+library(ggplot2)
+library(FactoMineR)
+library(dplyr)
+library(tidyverse)
+library(broom)
+library(jtools)
+library(LambertW)
+library(reshape2)
+
+```
+
+### Data selection
+
+Joined_n : Decision with Benedict to take off children who are in advance or late, as they are very different from the others, while keeping variables with mean per class with their mean.
+
+Selected classes are from 6 to 27 and selection of classes with min 2 boys and 2 girls are for
+- joined30_n
+
+
+```{r}
+
+if(IMPUTED == "imputed"){
+
+
+load(paste0("./data/cohort_", ANNEE_COHORTE,"_imputed_joined30_n.RData"))
+  
+  
+} 
+
+```
+
+### sanity check 
+
+```{r echo=TRUE}
+
+if(ANNEE_COHORTE == 2018 ){
+
+summary(joined30_n$Taille_Classe)    # min 6 and max 27
+summary(joined30_n$n_girls)          # min 2 max 19
+summary(joined30_n$n_boy)            # min 2 max 19
+summary(joined30_n$boy_proportion)   # 0.30 to 0.70
+
+}
+
+if(ANNEE_COHORTE == 2019 ){
+
+summary(joined30_n$Taille_Classe)    # min 6 and max 27
+summary(joined30_n$n_boy)            # min 2 max 19
+summary(joined30_n$n_girls)          # min 2 max 18
+summary(joined30_n$boy_proportion)   # 0.30 to 0.70
+
+}
+
+if(ANNEE_COHORTE == 2020 ){
+
+summary(joined30_n$Taille_Classe)    # min 6 and max 27
+summary(joined30_n$n_boy)            # min 2 max 19
+summary(joined30_n$n_girls)          # min 2 max 18
+summary(joined30_n$boy_proportion)   # 0.30 to 0.70
+
+}
+```
+
+
+# Rename Sexe_Num as Sexe_Boys for facilitating comprehension when reading results
+
+```{r}
+
+names(joined30_n)[names(joined30_n) == "Sexe_Num"] <- "Sexe_Boys"
+joined30_n$Sexe_Boys <- as.numeric(joined30_n$Sexe_Boys)
+
+```
+
+## 1) Gaussianize Variables 
+
+To gaussianize :
+
+- T1_Math, T2_Math, T3_Math
+- T1_Language
+- IPS_Etab_CP
+- Age_CP
+- boy_proportion
+- Taille_Classe
+- First_sexe_in_T1_Math
+- First_sexe_in_T1_Language
+
+Keep off the others : "ID_etab_class", "Sexe_Boys"
+
+```{r eval=FALSE, include=FALSE}
+joined30_n$Diff_T3_T1_Math_per_class <- as.numeric(joined30_n$T3_Math_mean_per_class - joined30_n$T1_Math_mean_per_class)
+
+joined30_n$Diff_Math_T3_T1_individual <- as.numeric(joined30_n$T3_Math - joined30_n$T1_Math)
+
+joined30_n$Diff_T3_T1_Lang_per_class <- as.numeric(joined30_n$T3_Language_mean_per_class - joined30_n$T1_Language_mean_per_class)
+
+joined30_n$Diff_T3_T1_Lang_individual <- as.numeric(joined30_n$T3_Language - joined30_n$T1_Language)
+
+joined30_n <- joined30_n[ , c("ID_etab_class", "T1_Math", "T2_Math", "T3_Math",
+                              "T1_Language", "T2_Language", "T3_Language","IPS_Etab_CP",
+                              "Sexe_Boys",
+                              "Age_CP", "boy_proportion","Taille_Classe",
+                              "First_sexe_in_T1_Math", "First_sexe_in_T1_Language", "Categ_Etab_CP", 
+                              "T1_Math_mean_per_class", "T3_Math_mean_per_class",
+                              "Diff_T3_T1_Math_per_class", "Diff_Math_T3_T1_individual",
+                              "Diff_T3_T1_Lang_per_class", "Diff_T3_T1_Lang_individual")]
+
+```
+
+
+# Special 2020
+
+```{r}
+
+joined_gau  <- as.data.frame(Gaussianize(joined30_n[, c("T1_Math", "T2_Math", 
+                                                        "T1_Language", "T2_Language",
+                                                         "IPS_Etab_CP",
+                                                        "Age_CP", "boy_proportion","Taille_Classe",
+                                                         "First_sexe_in_T1_Math",
+                                                        "First_sexe_in_T1_Language",
+                                                        "T1_Math_mean_per_class" )],
+                                         type = c("s"), method = c("IGMM"), return.u = TRUE))
+
+names(joined_gau)[names(joined_gau) == "T1_Math.U"]                     <- "T1_Math"
+names(joined_gau)[names(joined_gau) == "T2_Math.U"]                     <- "T2_Math"
+
+names(joined_gau)[names(joined_gau) == "T1_Language.U"]                 <- "T1_Language"
+names(joined_gau)[names(joined_gau) == "T2_Language.U"]                 <- "T2_Language"
+
+names(joined_gau)[names(joined_gau) == "IPS_Etab_CP.U"]                 <- "IPS_Etab_CP"
+names(joined_gau)[names(joined_gau) == "Age_CP.U"]                      <- "Age_CP"
+names(joined_gau)[names(joined_gau) == "boy_proportion.U"]              <- "boy_proportion"
+names(joined_gau)[names(joined_gau) == "Taille_Classe.U"]               <- "Taille_Classe"
+names(joined_gau)[names(joined_gau) == "First_sexe_in_T1_Math.U"]       <- "First_sexe_in_T1_Math"
+names(joined_gau)[names(joined_gau) == "First_sexe_in_T1_Language.U"]   <- "First_sexe_in_T1_Language"
+names(joined_gau)[names(joined_gau) == "T1_Math_mean_per_class.U"]      <- "T1_Math_mean_per_class"
+
+joined_gau$T1_Math                     <- as.numeric(joined_gau$T1_Math)
+joined_gau$T2_Math                     <- as.numeric(joined_gau$T2_Math)
+joined_gau$T1_Language                 <- as.numeric(joined_gau$T1_Language)
+joined_gau$T2_Language                 <- as.numeric(joined_gau$T2_Language)
+joined_gau$IPS_Etab_CP                 <- as.numeric(joined_gau$IPS_Etab_CP)
+joined_gau$Age_CP                      <- as.numeric(joined_gau$Age_CP)
+joined_gau$boy_proportion              <- as.numeric(joined_gau$boy_proportion)
+joined_gau$Taille_Classe               <- as.numeric(joined_gau$Taille_Classe)
+joined_gau$First_sexe_in_T1_Math       <- as.numeric(joined_gau$First_sexe_in_T1_Math)
+joined_gau$First_sexe_in_T1_Language   <- as.numeric(joined_gau$First_sexe_in_T1_Language)
+joined_gau$T1_Math_mean_per_class      <- as.numeric(joined_gau$T1_Math_mean_per_class)
+
+Base <- joined30_n[, c("ID_etab_class", "Sexe_Boys", "Categ_Etab_CP")]
+
+joined_base_gaussian_3 <- cbind(Base, joined_gau)
+rm(Base, joined_gau)
+
+joined_base_gaussian_3$Sexe_Boys <- as.factor(joined_base_gaussian_3$Sexe_Boys)
+
+# 1) compute sd for Math at T1 = Heterogeneity in Math at T1
+
+reversed_table <- melt(joined_base_gaussian_3[, c("T1_Math","ID_etab_class")], id = c("ID_etab_class"))
+heterogeneities <- dcast(reversed_table, ID_etab_class ~ variable, sd)
+names(heterogeneities) <- c("ID_etab_class", paste0("heterogeneity_",  c("T1_Math")))
+
+# merge heterogeneities and main classes table
+joined_base_gau_hetero_3 <- merge(joined_base_gaussian_3, heterogeneities[ , c("ID_etab_class", "heterogeneity_T1_Math")],
+                 by = "ID_etab_class")
+
+mean(joined_base_gau_hetero_3$heterogeneity_T1_Math) #0.86
+sd(joined_base_gau_hetero_3$heterogeneity_T1_Math) #0.20
+
+joined_hetero_Math_3  <- as.data.frame(Gaussianize(joined_base_gau_hetero_3[, c("heterogeneity_T1_Math")],
+                                         type = c("s"), method = c("IGMM"), return.u = TRUE))
+
+mean(joined_hetero_Math_3$Y1.U) #0
+sd(joined_hetero_Math_3$Y1.U) #1
+
+names(joined_hetero_Math_3)[names(joined_hetero_Math_3) == "Y1.U"] <- "heterogeneity_T1_Math_New"
+
+Base <- joined30_n[, c("ID_etab_class")]
+
+rm(heterogeneities, reversed_table)
+
+joined_base_gau_H_3 <- cbind(joined_base_gaussian_3, joined_hetero_Math_3)
+names(joined_base_gau_H_3)[names(joined_base_gau_H_3) == "heterogeneity_T1_Math_New"] <- "heterogeneity_T1_Math"
+
+# 1) compute sd for Language at T1 = Heterogeneity in Language at T1
+
+reversed_table <- melt(joined_base_gaussian_3[, c("T1_Language","ID_etab_class")], id = c("ID_etab_class"))
+heterogeneities <- dcast(reversed_table, ID_etab_class ~ variable, sd)
+names(heterogeneities) <- c("ID_etab_class", paste0("heterogeneity_",  c("T1_Language")))
+
+# merge heterogeneities and main classes table
+joined_base_gau_hetero_lang_3 <- merge(joined_base_gaussian_3, heterogeneities[ , c("ID_etab_class", "heterogeneity_T1_Language")],
+                 by = "ID_etab_class")
+
+mean(joined_base_gau_hetero_lang_3$heterogeneity_T1_Language) #0.84
+sd(joined_base_gau_hetero_lang_3$heterogeneity_T1_Language) #0.18
+
+joined_hetero_Lang_3  <- as.data.frame(Gaussianize(joined_base_gau_hetero_lang_3[, c("heterogeneity_T1_Language")],
+                                         type = c("s"), method = c("IGMM"), return.u = TRUE))
+
+mean(joined_hetero_Lang_3$Y1.U) #0
+sd(joined_hetero_Lang_3$Y1.U) #1
+
+names(joined_hetero_Lang_3)[names(joined_hetero_Lang_3) == "Y1.U"] <- "heterogeneity_T1_Lang_New"
+
+
+rm(heterogeneities, reversed_table)
+
+joined_base_gau_Fin_3 <- cbind(joined_base_gau_H_3, joined_hetero_Lang_3)
+names(joined_base_gau_Fin_3)[names(joined_base_gau_Fin_3) == "heterogeneity_T1_Lang_New"] <- "heterogeneity_T1_Lang"
+
+rm(joined_base_gaussian_3, joined_base_gau_H_3, joined_base_gau_hetero_3, joined_base_gau_hetero_lang_3, joined_hetero_Lang_3, joined_hetero_Math_3)
+
+Joined_Fin_3 <- joined_base_gau_Fin_3
+
+rm(joined_base_gau_Fin_3)
+
+
+```
+
+
+
+```{r eval=FALSE, include=FALSE}
+
+joined_gau  <- as.data.frame(Gaussianize(joined30_n[, c("T1_Math", "T2_Math", "T3_Math",
+                                                        "T1_Language", "T2_Language",
+                                                        "T3_Language", "IPS_Etab_CP",
+                                                        "Age_CP", "boy_proportion","Taille_Classe",
+                                                         "First_sexe_in_T1_Math",
+                                                        "First_sexe_in_T1_Language",
+                                                        "T1_Math_mean_per_class",
+                                                        "T3_Math_mean_per_class",
+                                                        "Diff_T3_T1_Math_per_class", 
+                                                        "Diff_Math_T3_T1_individual",
+                                                        "Diff_T3_T1_Lang_per_class",
+                                                        "Diff_T3_T1_Lang_individual")],
+                                         type = c("s"), method = c("IGMM"), return.u = TRUE))
+
+```
+
+
+```{r eval=FALSE, include=FALSE}
+
+names(joined_gau)[names(joined_gau) == "T1_Math.U"]                     <- "T1_Math"
+names(joined_gau)[names(joined_gau) == "T2_Math.U"]                     <- "T2_Math"
+names(joined_gau)[names(joined_gau) == "T3_Math.U"]                     <- "T3_Math"
+names(joined_gau)[names(joined_gau) == "T1_Language.U"]                 <- "T1_Language"
+names(joined_gau)[names(joined_gau) == "T2_Language.U"]                 <- "T2_Language"
+names(joined_gau)[names(joined_gau) == "T3_Language.U"]                 <- "T3_Language"
+names(joined_gau)[names(joined_gau) == "IPS_Etab_CP.U"]                 <- "IPS_Etab_CP"
+names(joined_gau)[names(joined_gau) == "Age_CP.U"]                      <- "Age_CP"
+names(joined_gau)[names(joined_gau) == "boy_proportion.U"]              <- "boy_proportion"
+names(joined_gau)[names(joined_gau) == "Taille_Classe.U"]               <- "Taille_Classe"
+names(joined_gau)[names(joined_gau) == "First_sexe_in_T1_Math.U"]       <- "First_sexe_in_T1_Math"
+names(joined_gau)[names(joined_gau) == "First_sexe_in_T1_Language.U"]   <- "First_sexe_in_T1_Language"
+names(joined_gau)[names(joined_gau) == "T1_Math_mean_per_class.U"]      <- "T1_Math_mean_per_class"
+names(joined_gau)[names(joined_gau) == "T3_Math_mean_per_class.U"]      <- "T3_Math_mean_per_class"
+names(joined_gau)[names(joined_gau) == "Diff_T3_T1_Math_per_class.U"]   <- "Diff_T3_T1_Math_per_class"
+names(joined_gau)[names(joined_gau) == "Diff_Math_T3_T1_individual.U"]  <- "Diff_T3_T1_Math_individual"
+names(joined_gau)[names(joined_gau) == "Diff_T3_T1_Lang_per_class.U"]   <- "Diff_T3_T1_Lang_per_class"
+names(joined_gau)[names(joined_gau) == "Diff_T3_T1_Lang_individual.U"]  <- "Diff_T3_T1_Lang_individual"
+
+
+joined_gau$T1_Math                     <- as.numeric(joined_gau$T1_Math)
+joined_gau$T2_Math                     <- as.numeric(joined_gau$T2_Math)
+joined_gau$T3_Math                     <- as.numeric(joined_gau$T3_Math)
+joined_gau$T1_Language                 <- as.numeric(joined_gau$T1_Language)
+joined_gau$T2_Language                 <- as.numeric(joined_gau$T2_Language)
+joined_gau$T3_Language                 <- as.numeric(joined_gau$T3_Language)
+joined_gau$IPS_Etab_CP                 <- as.numeric(joined_gau$IPS_Etab_CP)
+joined_gau$Age_CP                      <- as.numeric(joined_gau$Age_CP)
+joined_gau$boy_proportion              <- as.numeric(joined_gau$boy_proportion)
+joined_gau$Taille_Classe               <- as.numeric(joined_gau$Taille_Classe)
+joined_gau$First_sexe_in_T1_Math       <- as.numeric(joined_gau$First_sexe_in_T1_Math)
+joined_gau$First_sexe_in_T1_Language   <- as.numeric(joined_gau$First_sexe_in_T1_Language)
+joined_gau$T1_Math_mean_per_class      <- as.numeric(joined_gau$T1_Math_mean_per_class)
+joined_gau$T3_Math_mean_per_class      <- as.numeric(joined_gau$T3_Math_mean_per_class)
+joined_gau$Diff_T3_T1_Math_per_class   <- as.numeric(joined_gau$Diff_T3_T1_Math_per_class)
+joined_gau$Diff_T3_T1_Math_individual  <- as.numeric(joined_gau$Diff_T3_T1_Math_individual)
+joined_gau$Diff_T3_T1_Lang_per_class   <- as.numeric(joined_gau$Diff_T3_T1_Lang_per_class)
+joined_gau$Diff_T3_T1_Lang_individual  <- as.numeric(joined_gau$Diff_T3_T1_Lang_individual)
+
+```
+
+## 2) Add Gaussianize and non Gaussianized
+
+```{r eval=FALSE, include=FALSE}
+
+Base <- joined30_n[, c("ID_etab_class", "Sexe_Boys", "Categ_Etab_CP")]
+
+joined_base_gaussian_3 <- cbind(Base, joined_gau)
+rm(Base, joined_gau)
+
+joined_base_gaussian_3$Sexe_Boys <- as.factor(joined_base_gaussian_3$Sexe_Boys)
+
+```
+
+## 3) Heterogeneity
+
+After T1_Math is gaussianized  => create Heterogeneity_T1_Math and Heterogeneity_T1_Language
+
+```{r eval=FALSE, include=FALSE}
+
+
+# 1) compute sd for Math at T1 = Heterogeneity in Math at T1
+
+reversed_table <- melt(joined_base_gaussian_3[, c("T1_Math","ID_etab_class")], id = c("ID_etab_class"))
+heterogeneities <- dcast(reversed_table, ID_etab_class ~ variable, sd)
+names(heterogeneities) <- c("ID_etab_class", paste0("heterogeneity_",  c("T1_Math")))
+
+# merge heterogeneities and main classes table
+joined_base_gau_hetero_3 <- merge(joined_base_gaussian_3, heterogeneities[ , c("ID_etab_class", "heterogeneity_T1_Math")],
+                 by = "ID_etab_class")
+
+mean(joined_base_gau_hetero_3$heterogeneity_T1_Math) #0.86
+sd(joined_base_gau_hetero_3$heterogeneity_T1_Math) #0.20
+
+joined_hetero_Math_3  <- as.data.frame(Gaussianize(joined_base_gau_hetero_3[, c("heterogeneity_T1_Math")],
+                                         type = c("s"), method = c("IGMM"), return.u = TRUE))
+
+mean(joined_hetero_Math_3$Y1.U) #0
+sd(joined_hetero_Math_3$Y1.U) #1
+
+names(joined_hetero_Math_3)[names(joined_hetero_Math_3) == "Y1.U"] <- "heterogeneity_T1_Math_New"
+
+Base <- joined30_n[, c("ID_etab_class")]
+
+rm(heterogeneities, reversed_table)
+
+joined_base_gau_H_3 <- cbind(joined_base_gaussian_3, joined_hetero_Math_3)
+names(joined_base_gau_H_3)[names(joined_base_gau_H_3) == "heterogeneity_T1_Math_New"] <- "heterogeneity_T1_Math"
+
+# 1) compute sd for Language at T1 = Heterogeneity in Language at T1
+
+reversed_table <- melt(joined_base_gaussian_3[, c("T1_Language","ID_etab_class")], id = c("ID_etab_class"))
+heterogeneities <- dcast(reversed_table, ID_etab_class ~ variable, sd)
+names(heterogeneities) <- c("ID_etab_class", paste0("heterogeneity_",  c("T1_Language")))
+
+# merge heterogeneities and main classes table
+joined_base_gau_hetero_lang_3 <- merge(joined_base_gaussian_3, heterogeneities[ , c("ID_etab_class", "heterogeneity_T1_Language")],
+                 by = "ID_etab_class")
+
+mean(joined_base_gau_hetero_lang_3$heterogeneity_T1_Language) #0.84
+sd(joined_base_gau_hetero_lang_3$heterogeneity_T1_Language) #0.18
+
+joined_hetero_Lang_3  <- as.data.frame(Gaussianize(joined_base_gau_hetero_lang_3[, c("heterogeneity_T1_Language")],
+                                         type = c("s"), method = c("IGMM"), return.u = TRUE))
+
+mean(joined_hetero_Lang_3$Y1.U) #0
+sd(joined_hetero_Lang_3$Y1.U) #1
+
+names(joined_hetero_Lang_3)[names(joined_hetero_Lang_3) == "Y1.U"] <- "heterogeneity_T1_Lang_New"
+
+
+rm(heterogeneities, reversed_table)
+
+joined_base_gau_Fin_3 <- cbind(joined_base_gau_H_3, joined_hetero_Lang_3)
+names(joined_base_gau_Fin_3)[names(joined_base_gau_Fin_3) == "heterogeneity_T1_Lang_New"] <- "heterogeneity_T1_Lang"
+
+rm(joined_base_gaussian_3, joined_base_gau_H_3, joined_base_gau_hetero_3, joined_base_gau_hetero_lang_3, joined_hetero_Lang_3, joined_hetero_Math_3)
+
+Joined_Fin_3 <- joined_base_gau_Fin_3
+
+rm(joined_base_gau_Fin_3)
+
+```
+
+
+
+## 4) Private Public & REP REP+
+
+```{r eval=FALSE, include=FALSE}
+
+# when drawing graphs, we note children being in advance or late when entering first grade are not following the same patterns than children who entered in first grade at the normal age. Therefore, we selected here only children being in the scope of normal age, while keeping the informations about who's first of class and class's means.
+
+# Joined_Fin_3
+
+join_n_PP_3 <- Joined_Fin_3[Joined_Fin_3$Categ_Etab_CP == "Public" | Joined_Fin_3$Categ_Etab_CP == "Private", ]
+join_n_RR_3 <- Joined_Fin_3[Joined_Fin_3$Categ_Etab_CP == "REP" | Joined_Fin_3$Categ_Etab_CP == "REP+", ]
+
+
+```
+
+
+## 5) Save DATA
+
+classes ( > 5 to < 28 per class) 
+
+& min 30% boys or min 30% girls
+
+& min 2 boys and min 2 girls in a class of 6 students.
+
+
+```{r}
+
+save.image(file = paste0("./data/cohort_", ANNEE_COHORTE, "_", IMPUTED, "_ModRegLin_Article.RData"))
+
+
+```
+
+

@@ -1,0 +1,676 @@
+---
+title: "10C_Graphs_Finaux_1"
+author: 
+  - Pauline Martinot [UNICOG, NeuroSpin]
+  - Bénédicte Colnet [Inria, Paris-Saclay]
+date: "1/24/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE, include = TRUE)
+
+library(tidyverse)
+library(dplyr)
+library(rmarkdown)
+library(ggplot2)
+library(reshape2)
+library(alluvial)
+library(patchwork)
+library(ciTools)
+library(gmodels)
+library(extrafont)
+
+```
+
+# Parameters to set before launch of the pipeline
+
+```{r}
+
+IMPUTED = "imputed" # "non-imputed"
+
+ANNEE_COHORTE = 2018 # 2018 #2020
+
+```
+
+# Data
+
+```{r}
+
+load(paste0("./data/cohort_", ANNEE_COHORTE, "_", IMPUTED, "_after_2_composite_covariate.RData"))
+load(paste0("./data/cohort_", ANNEE_COHORTE, "_", IMPUTED, "_classes.RData"))
+load(paste0("./data/cohort_", ANNEE_COHORTE, "_", IMPUTED, "_joined.RData"))
+load(paste0("./data/cohort_", ANNEE_COHORTE, "_", IMPUTED, "_joined_n.RData"))
+load(paste0("./data/cohort_", ANNEE_COHORTE, "_", IMPUTED, "_joined30_n.RData"))
+
+SEUIL_INF_CLASS = 5
+
+```
+
+# Title : A longitudinal  nation-wide  assessment  of  language  and mathematics in first and second grades
+
+# Graph 1A : Schema Cohorts and Evalaide
+
+# Graph 1B : Age effect on results in Math at T1 and language at T1
+
+Within the total population, do we find higher math and language skills at older ages?
+
+### DATA_AGE 
+
+
+```{r}
+
+DATA_AGE = data_depp[(data_depp$Age_CP >= 64) & (data_depp$Age_CP <= 86) ,]
+DATA_AGE <- DATA_AGE[!is.na(DATA_AGE$Age_Cat) , ]
+DATA_AGE$Age_CAT <- case_when(DATA_AGE$Age_Cat == "Young" ~ "Young",
+                              DATA_AGE$Age_Cat == "Normal inf" ~ "Normal",
+                              DATA_AGE$Age_Cat == "Normal sup" ~ "Normal",
+                              DATA_AGE$Age_Cat == "Late" ~ "Late")
+DATA_AGE$Age_CAT <- as.factor(DATA_AGE$Age_CAT)
+
+```
+
+
+### Math x Age colors T1 T2 T3
+
+```{r}
+## Math T1
+
+DATA_AGE %>%
+  group_by(Age_CAT) %>%
+  ggplot(mapping = aes(x = Age_CP, y = T1_Math_Rank*100, group = Age_CAT, color = Age_CAT)) +
+  stat_summary(fun="mean", size = 4, geom = "point") +
+  stat_summary(fun.DATA_AGE="mean_se") +
+  coord_cartesian(ylim=c(20, 72)) +
+  scale_color_manual(legend_title,
+                     values=c("limegreen", "dodgerblue" , "darkblue" )) +
+  xlab("Age in first grade (month)") +
+  ylab("Math level at T1 (percentile rank)") +
+  theme_light() +
+  theme(axis.line = element_line(arrow = arrow(length = unit(2, "mm")))) +
+  theme(axis.title.x = element_text(size=12,  color="black", angle=0, hjust = 1)) +
+  theme(axis.title.y = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=12, color="black", angle=0, hjust = 1))
+
+
+
+ggsave(paste0("./img/",ANNEE_COHORTE,"/Graph_1A_Age_Effect_Math_T1_", ANNEE_COHORTE,".svg"),
+       width = 9, height = 6)
+
+# Math T2
+
+DATA_AGE %>%
+  group_by(Age_CAT) %>%
+  ggplot(mapping = aes(x = Age_CP, y = T2_Math_Rank*100, group = Age_CAT, color = Age_CAT)) +
+  stat_summary(fun="mean", size = 4, geom = "point") +
+  stat_summary(fun.DATA_AGE="mean_se") +
+  scale_color_manual(legend_title,
+                     values=c("limegreen", "dodgerblue" , "darkblue" )) +
+  coord_cartesian(ylim=c(20, 72)) +
+  xlab("Age in first grade (month)") +
+  ylab("Math level at T2 (percentile rank)") +
+  theme_light() +
+  theme(axis.line = element_line(arrow = arrow(length = unit(2, "mm")))) +
+  theme(axis.title.x = element_text(size=12,  color="black", angle=0, hjust = 1)) +
+  theme(axis.title.y = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=12, color="black", angle=0, hjust = 1))
+
+
+ggsave(paste0("./img/",ANNEE_COHORTE,"/Graph_1A_Age_Effect_Math_T2_", ANNEE_COHORTE,".svg"),
+       width = 9, height = 6)
+
+# Math T3
+
+DATA_AGE %>%
+  group_by(Age_CAT) %>%
+  ggplot(mapping = aes(x = Age_CP, y = T3_Math_Rank*100, group = Age_CAT, color = Age_CAT)) +
+  stat_summary(fun="mean", size = 4, geom = "point") +
+  stat_summary(fun.DATA_AGE="mean_se") +
+  scale_color_manual(legend_title,
+                     values=c("limegreen", "dodgerblue" , "darkblue" )) +
+  coord_cartesian(ylim=c(20, 72)) +
+  xlab("Age in first grade (month)") +
+  ylab("Math level at T3 (percentile rank)") +
+  theme_light() +
+  theme(axis.line = element_line(arrow = arrow(length = unit(2, "mm")))) +
+  theme(axis.title.x = element_text(size=12,  color="black", angle=0, hjust = 1)) +
+  theme(axis.title.y = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=12, color="black", angle=0, hjust = 1))
+
+
+ggsave(paste0("./img/",ANNEE_COHORTE,"/Graph_1A_Age_Effect_Math_T3_", ANNEE_COHORTE,".svg"),
+       width = 9, height = 6)
+
+
+
+```
+
+
+### Language x Age effect  T1 T2 T3
+
+```{r echo=TRUE}
+
+# Lang T1 
+
+DATA_AGE %>%
+  group_by(Age_CAT) %>%
+  ggplot(mapping = aes(x = Age_CP, y = T1_Lang_Rank*100, group = Age_CAT, color = Age_CAT)) +
+  stat_summary(fun="mean", size = 4, geom = "point") +
+  stat_summary(fun.DATA_AGE="mean_se") +
+  coord_cartesian(ylim=c(18,75)) +
+  scale_color_manual(legend_title,
+                     values=c("limegreen", "dodgerblue" , "darkblue" )) +
+  xlab("Age in first grade (month)") +
+  ylab("Lang level at T1 (percentile rank)") +
+  theme_light() +
+  theme(axis.line = element_line(arrow = arrow(length = unit(2, "mm")))) +
+  theme(axis.title.x = element_text(size=12,  color="black", angle=0, hjust = 1)) +
+  theme(axis.title.y = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=12, color="black", angle=0, hjust = 1))
+
+
+
+ggsave(paste0("./img/",ANNEE_COHORTE,"/Graph_1A_Age_Effect_Lang_T1_", ANNEE_COHORTE,".svg"),
+       width = 9, height = 6)
+
+# Lang T2
+
+DATA_AGE %>%
+  group_by(Age_CAT) %>%
+  ggplot(mapping = aes(x = Age_CP, y = T2_Lang_Rank*100, group = Age_CAT, color = Age_CAT)) +
+  stat_summary(fun="mean", size = 4, geom = "point") +
+  stat_summary(fun.DATA_AGE="mean_se") +
+  scale_color_manual(legend_title,
+                     values=c("limegreen", "dodgerblue" , "darkblue" )) +
+  coord_cartesian(ylim=c(18, 75)) +
+  xlab("Age in first grade (month)") +
+  ylab("Lang level at T2 (percentile rank)") +
+  theme_light() +
+  theme(axis.line = element_line(arrow = arrow(length = unit(2, "mm")))) +
+  theme(axis.title.x = element_text(size=12,  color="black", angle=0, hjust = 1)) +
+  theme(axis.title.y = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=12, color="black", angle=0, hjust = 1))
+
+
+ggsave(paste0("./img/",ANNEE_COHORTE,"/Graph_1A_Age_Effect_Lang_T2_", ANNEE_COHORTE,".svg"),
+       width = 9, height = 6)
+
+# Lang T3
+
+DATA_AGE %>%
+  group_by(Age_CAT) %>%
+  ggplot(mapping = aes(x = Age_CP, y = T3_Lang_Rank*100, group = Age_CAT, color = Age_CAT)) +
+  stat_summary(fun="mean", size = 4, geom = "point") +
+  stat_summary(fun.DATA_AGE="mean_se") +
+  scale_color_manual(legend_title,
+                     values=c("limegreen", "dodgerblue" , "darkblue" )) +
+  coord_cartesian(ylim=c(18, 75)) +
+  xlab("Age in first grade (month)") +
+  ylab("Lang level at T3 (percentile rank)") +
+  theme_light() +
+  theme(axis.line = element_line(arrow = arrow(length = unit(2, "mm")))) +
+  theme(axis.title.x = element_text(size=12,  color="black", angle=0, hjust = 1)) +
+  theme(axis.title.y = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=12, color="black", angle=0, hjust = 1))
+
+
+ggsave(paste0("./img/",ANNEE_COHORTE,"/Graph_1A_Age_Effect_Lang_T3_", ANNEE_COHORTE,".svg"),
+       width = 9, height = 6)
+
+
+```
+
+### Problem Solving x Age effect  T1 T2 T3
+
+```{r echo=TRUE}
+
+# Resoud_Pb T1 
+
+DATA_AGE %>%
+  group_by(Age_CAT) %>%
+  ggplot(mapping = aes(x = Age_CP, y = T1_Resoud_Pb_P_Rank*100, group = Age_CAT, color = Age_CAT)) +
+  stat_summary(fun="mean", size = 4, geom = "point") +
+  stat_summary(fun.DATA_AGE="mean_se") +
+  coord_cartesian(ylim=c(25,65)) +
+  scale_color_manual(legend_title,
+                     values=c("limegreen", "dodgerblue" , "darkblue" )) +
+  xlab("Age in first grade (month)") +
+  ylab("Resoud_Pb level at T1 (percentile rank)") +
+  theme_light() +
+  theme(axis.line = element_line(arrow = arrow(length = unit(2, "mm")))) +
+  theme(axis.title.x = element_text(size=12,  color="black", angle=0, hjust = 1)) +
+  theme(axis.title.y = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=12, color="black", angle=0, hjust = 1))
+
+
+
+ggsave(paste0("./img/",ANNEE_COHORTE,"/Graph_1A_Age_Effect_Resoud_Pb_T1_", ANNEE_COHORTE,".svg"),
+       width = 9, height = 6)
+
+# Resoud_Pb T2
+
+DATA_AGE %>%
+  group_by(Age_CAT) %>%
+  ggplot(mapping = aes(x = Age_CP, y = T2_Resoud_Pb_P_Rank*100, group = Age_CAT, color = Age_CAT)) +
+  stat_summary(fun="mean", size = 4, geom = "point") +
+  stat_summary(fun.DATA_AGE="mean_se") +
+  scale_color_manual(legend_title,
+                     values=c("limegreen", "dodgerblue" , "darkblue" )) +
+  coord_cartesian(ylim=c(25, 65)) +
+  xlab("Age in first grade (month)") +
+  ylab("Resoud_Pb level at T2 (percentile rank)") +
+  theme_light() +
+  theme(axis.line = element_line(arrow = arrow(length = unit(2, "mm")))) +
+  theme(axis.title.x = element_text(size=12,  color="black", angle=0, hjust = 1)) +
+  theme(axis.title.y = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=12, color="black", angle=0, hjust = 1))
+
+
+ggsave(paste0("./img/",ANNEE_COHORTE,"/Graph_1A_Age_Effect_Resoud_Pb_T2_", ANNEE_COHORTE,".svg"),
+       width = 9, height = 6)
+
+# Resoud_Pb T3
+
+DATA_AGE %>%
+  group_by(Age_CAT) %>%
+  ggplot(mapping = aes(x = Age_CP, y = T3_Resoud_Pb_P_Rank*100, group = Age_CAT, color = Age_CAT)) +
+  stat_summary(fun="mean", size = 4, geom = "point") +
+  stat_summary(fun.DATA_AGE="mean_se") +
+  scale_color_manual(legend_title,
+                     values=c("limegreen", "dodgerblue" , "darkblue" )) +
+  coord_cartesian(ylim=c(25, 65)) +
+  xlab("Age in first grade (month)") +
+  ylab("Resoud_Pb level at T3 (percentile rank)") +
+  theme_light() +
+  theme(axis.line = element_line(arrow = arrow(length = unit(2, "mm")))) +
+  theme(axis.title.x = element_text(size=12,  color="black", angle=0, hjust = 1)) +
+  theme(axis.title.y = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=12, color="black", angle=0, hjust = 1))
+
+
+ggsave(paste0("./img/",ANNEE_COHORTE,"/Graph_1A_Age_Effect_Resoud_Pb_T3_", ANNEE_COHORTE,".svg"),
+       width = 9, height = 6)
+
+```
+
+### Number line x Age effect  T1 T2 T3
+
+```{r echo=TRUE}
+
+# Ligne_Num T1 
+
+DATA_AGE %>%
+  group_by(Age_CAT) %>%
+  ggplot(mapping = aes(x = Age_CP, y = T1_Ligne_Num_P_Rank*100, group = Age_CAT, color = Age_CAT)) +
+  stat_summary(fun="mean", size = 4, geom = "point") +
+  stat_summary(fun.DATA_AGE="mean_se") +
+  coord_cartesian(ylim=c(30,63)) +
+  scale_color_manual(legend_title,
+                     values=c("limegreen", "dodgerblue" , "darkblue" )) +
+  xlab("Age in first grade (month)") +
+  ylab("Ligne_Num level at T1 (percentile rank)") +
+  theme_light() +
+  theme(axis.line = element_line(arrow = arrow(length = unit(2, "mm")))) +
+  theme(axis.title.x = element_text(size=12,  color="black", angle=0, hjust = 1)) +
+  theme(axis.title.y = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=12, color="black", angle=0, hjust = 1))
+
+
+
+ggsave(paste0("./img/",ANNEE_COHORTE,"/Graph_1A_Age_Effect_Ligne_Num_T1_", ANNEE_COHORTE,".svg"),
+       width = 9, height = 6)
+
+# Ligne_Num T2
+
+DATA_AGE %>%
+  group_by(Age_CAT) %>%
+  ggplot(mapping = aes(x = Age_CP, y = T2_Ligne_Num_P_Rank*100, group = Age_CAT, color = Age_CAT)) +
+  stat_summary(fun="mean", size = 4, geom = "point") +
+  stat_summary(fun.DATA_AGE="mean_se") +
+  scale_color_manual(legend_title,
+                     values=c("limegreen", "dodgerblue" , "darkblue" )) +
+  coord_cartesian(ylim=c(30, 63)) +
+  xlab("Age in first grade (month)") +
+  ylab("Ligne_Num level at T2 (percentile rank)") +
+  theme_light() +
+  theme(axis.line = element_line(arrow = arrow(length = unit(2, "mm")))) +
+  theme(axis.title.x = element_text(size=12,  color="black", angle=0, hjust = 1)) +
+  theme(axis.title.y = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=12, color="black", angle=0, hjust = 1))
+
+
+ggsave(paste0("./img/",ANNEE_COHORTE,"/Graph_1A_Age_Effect_Ligne_Num_T2_", ANNEE_COHORTE,".svg"),
+       width = 9, height = 6)
+
+# Ligne_Num T3
+
+DATA_AGE %>%
+  group_by(Age_CAT) %>%
+  ggplot(mapping = aes(x = Age_CP, y = T3_Ligne_Num_P_Rank*100, group = Age_CAT, color = Age_CAT)) +
+  stat_summary(fun="mean", size = 4, geom = "point") +
+  stat_summary(fun.DATA_AGE="mean_se") +
+  scale_color_manual(legend_title,
+                     values=c("limegreen", "dodgerblue" , "darkblue" )) +
+  coord_cartesian(ylim=c(30, 63)) +
+  xlab("Age in first grade (month)") +
+  ylab("Ligne_Num level at T3 (percentile rank)") +
+  theme_light() +
+  theme(axis.line = element_line(arrow = arrow(length = unit(2, "mm")))) +
+  theme(axis.title.x = element_text(size=12,  color="black", angle=0, hjust = 1)) +
+  theme(axis.title.y = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=12, color="black", angle=0, hjust = 1))
+
+
+ggsave(paste0("./img/",ANNEE_COHORTE,"/Graph_1A_Age_Effect_Ligne_Num_T3_", ANNEE_COHORTE,".svg"),
+       width = 9, height = 6)
+
+```
+### Statistics
+
+
+
+```{r echo=TRUE}
+
+#### Stat about School category Class size
+
+# Private + Public
+(nrow(data_depp[data_depp$Categ_Etab_CP == "Public" | data_depp$Categ_Etab_CP == "Private", ]) / nrow(data_depp))*100
+
+# Private
+DD1 <- data_depp[data_depp$Categ_Etab_CP == "Public", ]
+summary(DD1$Taille_Classe)
+
+# Public
+DD2 <- data_depp[data_depp$Categ_Etab_CP == "Private", ]
+summary(DD2$Taille_Classe)
+
+# REP
+DD3 <- data_depp[data_depp$Categ_Etab_CP == "REP", ]
+summary(DD3$Taille_Classe)
+
+# REP+
+DD4 <- data_depp[data_depp$Categ_Etab_CP == "REP+", ]
+summary(DD4$Taille_Classe)
+
+#### Stat about age = proportions
+
+# General
+
+(nrow(data_depp[data_depp$Age_Cat == "Young", ]) / nrow(data_depp))*100
+(nrow(data_depp[data_depp$Age_Cat == "Normal inf" | data_depp$Age_Cat == "Normal sup", ]) / nrow(data_depp))*100
+(nrow(data_depp[data_depp$Age_Cat == "Late", ]) / nrow(data_depp))*100
+
+#### Stat about age = proportions + Categ
+
+# Private
+
+(nrow(DD1[DD1$Age_Cat == "Young", ]) / nrow(DD1))*100
+(nrow(DD1[DD1$Age_Cat == "Normal inf" | DD1$Age_Cat == "Normal sup", ]) / nrow(DD1))*100
+(nrow(DD1[DD1$Age_Cat == "Late", ]) / nrow(DD1))*100
+
+# Public
+(nrow(DD2[DD2$Age_Cat == "Young", ]) / nrow(DD2))*100
+(nrow(DD2[DD2$Age_Cat == "Normal inf" | DD2$Age_Cat == "Normal sup", ]) / nrow(DD2))*100
+(nrow(DD2[DD2$Age_Cat == "Late", ]) / nrow(DD2))*100
+
+# REP
+(nrow(DD3[DD3$Age_Cat == "Young", ]) / nrow(DD3))*100
+(nrow(DD3[DD3$Age_Cat == "Normal inf" | DD3$Age_Cat == "Normal sup", ]) / nrow(DD3))*100
+(nrow(DD3[DD3$Age_Cat == "Late", ]) / nrow(DD3))*100
+
+# REP+
+(nrow(DD4[DD4$Age_Cat == "Young", ]) / nrow(DD4))*100
+(nrow(DD4[DD4$Age_Cat == "Normal inf" | DD4$Age_Cat == "Normal sup", ]) / nrow(DD4))*100
+(nrow(DD4[DD4$Age_Cat == "Late", ]) / nrow(DD4))*100
+
+
+#### Stat about age & Sexe = Proportions
+
+# General Sexe
+
+(nrow(data_depp[data_depp$Sexe == "Boys", ]) / nrow(data_depp))*100
+(nrow(data_depp[data_depp$Sexe == "Girls", ]) / nrow(data_depp))*100
+
+# Private
+
+(nrow(DD1[DD1$Sexe == "Boys", ]) / nrow(DD1))*100
+(nrow(DD1[DD1$Sexe == "Girls", ]) / nrow(DD1))*100
+
+# Public
+
+(nrow(DD2[DD2$Sexe == "Boys", ]) / nrow(DD2))*100
+(nrow(DD2[DD2$Sexe == "Girls", ]) / nrow(DD2))*100
+
+# REP
+
+(nrow(DD3[DD3$Sexe == "Boys", ]) / nrow(DD3))*100
+(nrow(DD3[DD3$Sexe == "Girls", ]) / nrow(DD3))*100
+
+# REP+
+
+(nrow(DD4[DD4$Sexe == "Boys", ]) / nrow(DD4))*100
+(nrow(DD4[DD4$Sexe == "Girls", ]) / nrow(DD4))*100
+
+##### Stat Age x Sexe
+
+
+(nrow(data_depp[data_depp$Age_Cat == "Young" & data_depp$Sexe == "Boys", ]) / nrow(data_depp[data_depp$Age_Cat == "Young", ]))*100
+(nrow(data_depp[data_depp$Age_Cat == "Young" & data_depp$Sexe == "Girls", ]) / nrow(data_depp[data_depp$Age_Cat == "Young", ]))*100
+(nrow(data_depp[(data_depp$Age_Cat == "Normal inf" | data_depp$Age_Cat == "Normal sup") & (data_depp$Sexe == "Boys"), ]) / nrow(data_depp[data_depp$Age_Cat == "Normal inf" | data_depp$Age_Cat == "Normal sup", ]))*100
+(nrow(data_depp[(data_depp$Age_Cat == "Normal inf" | data_depp$Age_Cat == "Normal sup") & (data_depp$Sexe == "Girls"), ]) / nrow(data_depp[data_depp$Age_Cat == "Normal inf" | data_depp$Age_Cat == "Normal sup", ]))*100
+(nrow(data_depp[(data_depp$Age_Cat == "Late") & (data_depp$Sexe == "Boys"), ]) / nrow(data_depp[data_depp$Age_Cat == "Late", ]))*100
+(nrow(data_depp[(data_depp$Age_Cat == "Late") & (data_depp$Sexe == "Girls"), ]) / nrow(data_depp[data_depp$Age_Cat == "Late", ]))*100
+
+```
+
+
+
+# Graph 1C : Level x 10 categories and at T1, T2, T3 - TOTAL AGE
+
+### Graph 1C Math x Total age population
+
+```{r}
+# Math T1
+
+data_depp %>%
+  group_by(Categ_10c_CP, Categ_Etab_CP) %>%
+  summarise(mean_T1 = mean(T1_Math_Rank*100)) %>%
+  ggplot(aes(x = Categ_10c_CP, y = mean_T1, group = Categ_Etab_CP, color = Categ_10c_CP)) +
+  geom_point(size = 4) +
+  scale_color_manual(legend_title,
+                     values=c("darkblue", "dodgerblue" , "darkgreen", "seagreen", "limegreen",
+                              "chartreuse2", "#feb24c" ,"#fd8d3c", "#e31a1c", "darkred")) +
+  geom_line(size = 2) +
+  coord_cartesian(ylim=c(32, 58)) +
+  xlab("10 social categories of school") +
+  ylab("Math Performance ranks at T1")  +
+  theme_light() +
+  theme(panel.background = element_rect(size = 0.1, linetype = 'solid',
+                                colour = "grey")) +
+  theme(panel.grid.major = element_line(size = 0.1, linetype = 'solid',
+                                colour = "#CCCCCC")) +
+  theme(panel.grid.minor = element_line(size = 0.1, linetype = 'solid',
+                                colour = "#CCCCCC")) +
+  theme(panel.spacing = unit(2, "lines")) +
+  theme(axis.line.x = element_line(arrow = arrow(length = unit(2, "mm")))) +
+  theme(axis.line.y = element_line(arrow = arrow(length = unit(2, "mm")))) +
+  theme(axis.title.x = element_text(size=12,  color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=12, color="black", angle=0, hjust = 1))
+
+ggsave(paste0("img/",ANNEE_COHORTE,"/Graph_1C_Math_10Categ_Total_Math_T1.svg"), width = 6, height = 5)
+
+# Math T2
+
+data_depp %>%
+  group_by(Categ_10c_CP, Categ_Etab_CP) %>%
+  summarise(mean_T2 = mean(T2_Math_Rank*100)) %>%
+  ggplot(aes(x = Categ_10c_CP, y = mean_T2, group = Categ_Etab_CP, color = Categ_10c_CP)) +
+  geom_point(size = 4) +
+  scale_color_manual(legend_title,
+                     values=c("darkblue", "dodgerblue" , "darkgreen", "seagreen", "limegreen",
+                              "chartreuse2", "#feb24c" ,"#fd8d3c", "#e31a1c", "darkred")) +
+  geom_line(size = 2) +
+  coord_cartesian(ylim=c(32, 58)) +
+  xlab("10 social categories of school") +
+  ylab("Math Performance ranks at T2")  +
+  theme_light() +
+  theme(panel.background = element_rect(size = 0.1, linetype = 'solid',
+                                colour = "grey")) +
+  theme(panel.grid.major = element_line(size = 0.1, linetype = 'solid',
+                                colour = "#CCCCCC")) +
+  theme(panel.grid.minor = element_line(size = 0.1, linetype = 'solid',
+                                colour = "#CCCCCC")) +
+  theme(panel.spacing = unit(2, "lines")) +
+  theme(axis.line.x = element_line(arrow = arrow(length = unit(2, "mm")))) +
+  theme(axis.line.y = element_line(arrow = arrow(length = unit(2, "mm")))) +
+  theme(axis.title.x = element_text(size=12,  color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=12, color="black", angle=0, hjust = 1))
+
+ggsave(paste0("img/",ANNEE_COHORTE,"/Graph_1C_Math_10Categ_Total_Math_T2.svg"), width = 6, height = 5)
+
+# Math T3
+
+data_depp %>%
+  group_by(Categ_10c_CP, Categ_Etab_CP) %>%
+  summarise(mean_T3 = mean(T3_Math_Rank*100)) %>%
+  ggplot(aes(x = Categ_10c_CP, y = mean_T3, group = Categ_Etab_CP, color = Categ_10c_CP)) +
+  geom_point(size = 4) +
+  scale_color_manual(legend_title,
+                     values=c("darkblue", "dodgerblue" , "darkgreen", "seagreen", "limegreen",
+                              "chartreuse2", "#feb24c" ,"#fd8d3c", "#e31a1c", "darkred")) +
+  geom_line(size = 2) +
+  coord_cartesian(ylim=c(32, 58)) +
+  xlab("10 social categories of school") +
+  ylab("Math Performance ranks at T3")  +
+  theme_light() +
+  theme(panel.background = element_rect(size = 0.1, linetype = 'solid',
+                                colour = "grey")) +
+  theme(panel.grid.major = element_line(size = 0.1, linetype = 'solid',
+                                colour = "#CCCCCC")) +
+  theme(panel.grid.minor = element_line(size = 0.1, linetype = 'solid',
+                                colour = "#CCCCCC")) +
+  theme(panel.spacing = unit(2, "lines")) +
+  theme(axis.line.x = element_line(arrow = arrow(length = unit(2, "mm")))) +
+  theme(axis.line.y = element_line(arrow = arrow(length = unit(2, "mm")))) +
+  theme(axis.title.x = element_text(size=12,  color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=12, color="black", angle=0, hjust = 1))
+
+ggsave(paste0("img/",ANNEE_COHORTE,"/Graph_1C_Math_10Categ_Total_Math_T3.svg"), width = 6, height = 5)
+
+```
+
+
+### Graph 1C Language x Total age population
+
+```{r}
+
+# Lang T1
+
+data_depp %>%
+  group_by(Categ_10c_CP, Categ_Etab_CP) %>%
+  summarise(mean_T1 = mean(T1_Lang_Rank*100)) %>%
+  ggplot(aes(x = Categ_10c_CP, y = mean_T1, group = Categ_Etab_CP, color = Categ_10c_CP)) +
+  geom_point(size = 4) +
+  scale_color_manual(legend_title,
+                     values=c("darkblue", "dodgerblue" , "darkgreen", "seagreen", "limegreen",
+                              "chartreuse2", "#feb24c" ,"#fd8d3c", "#e31a1c", "darkred")) +
+  geom_line(size = 2) +
+  coord_cartesian(ylim=c(30, 63)) +
+  xlab("10 social categories of school") +
+  ylab("Lang Performance ranks at T1")  +
+  theme_light() +
+  theme(panel.background = element_rect(size = 0.1, linetype = 'solid',
+                                colour = "grey")) +
+  theme(panel.grid.major = element_line(size = 0.1, linetype = 'solid',
+                                colour = "#CCCCCC")) +
+  theme(panel.grid.minor = element_line(size = 0.1, linetype = 'solid',
+                                colour = "#CCCCCC")) +
+  theme(panel.spacing = unit(2, "lines")) +
+  theme(axis.line.x = element_line(arrow = arrow(length = unit(2, "mm")))) +
+  theme(axis.line.y = element_line(arrow = arrow(length = unit(2, "mm")))) +
+  theme(axis.title.x = element_text(size=12,  color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=12, color="black", angle=0, hjust = 1))
+
+ggsave(paste0("img/",ANNEE_COHORTE,"/Graph_1C_Lang_10Categ_Total_Lang_T1.svg"), width = 9, height = 6, dpi = 150)
+
+# Lang T2
+
+data_depp %>%
+  group_by(Categ_10c_CP, Categ_Etab_CP) %>%
+  summarise(mean_T2 = mean(T2_Lang_Rank*100)) %>%
+  ggplot(aes(x = Categ_10c_CP, y = mean_T2, group = Categ_Etab_CP, color = Categ_10c_CP)) +
+  geom_point(size = 4) +
+  scale_color_manual(legend_title,
+                     values=c("darkblue", "dodgerblue" , "darkgreen", "seagreen", "limegreen",
+                              "chartreuse2", "#feb24c" ,"#fd8d3c", "#e31a1c", "darkred")) +
+  geom_line(size = 2) +
+  coord_cartesian(ylim=c(30, 63)) +
+  xlab("10 social categories of school") +
+  ylab("Lang Performance ranks at T2")  +
+  theme_light() +
+  theme(panel.background = element_rect(size = 0.1, linetype = 'solid',
+                                colour = "grey")) +
+  theme(panel.grid.major = element_line(size = 0.1, linetype = 'solid',
+                                colour = "#CCCCCC")) +
+  theme(panel.grid.minor = element_line(size = 0.1, linetype = 'solid',
+                                colour = "#CCCCCC")) +
+  theme(panel.spacing = unit(2, "lines")) +
+  theme(axis.line.x = element_line(arrow = arrow(length = unit(2, "mm")))) +
+  theme(axis.line.y = element_line(arrow = arrow(length = unit(2, "mm")))) +
+  theme(axis.title.x = element_text(size=12,  color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=12, color="black", angle=0, hjust = 1))
+
+ggsave(paste0("img/",ANNEE_COHORTE,"/Graph_1C_Lang_10Categ_Total_Lang_T2.svg"), width = 9, height = 6, dpi = 150)
+
+# Lang T3
+
+data_depp %>%
+  group_by(Categ_10c_CP, Categ_Etab_CP) %>%
+  summarise(mean_T3 = mean(T3_Lang_Rank*100)) %>%
+  ggplot(aes(x = Categ_10c_CP, y = mean_T3, group = Categ_Etab_CP, color = Categ_10c_CP)) +
+  geom_point(size = 4) +
+  scale_color_manual(legend_title,
+                     values=c("darkblue", "dodgerblue" , "darkgreen", "seagreen", "limegreen",
+                              "chartreuse2", "#feb24c" ,"#fd8d3c", "#e31a1c", "darkred")) +
+  geom_line(size = 2) +
+  coord_cartesian(ylim=c(30, 63)) +
+  xlab("10 social categories of school") +
+  ylab("Lang Performance ranks at T3")  +
+  theme_light() +
+  theme(panel.background = element_rect(size = 0.1, linetype = 'solid',
+                                colour = "grey")) +
+  theme(panel.grid.major = element_line(size = 0.1, linetype = 'solid',
+                                colour = "#CCCCCC")) +
+  theme(panel.grid.minor = element_line(size = 0.1, linetype = 'solid',
+                                colour = "#CCCCCC")) +
+  theme(panel.spacing = unit(2, "lines")) +
+  theme(axis.line.x = element_line(arrow = arrow(length = unit(2, "mm")))) +
+  theme(axis.line.y = element_line(arrow = arrow(length = unit(2, "mm")))) +
+  theme(axis.title.x = element_text(size=12,  color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=12, color="black", angle=0, hjust = 1))
+
+ggsave(paste0("img/",ANNEE_COHORTE,"/Graph_1C_Lang_10Categ_Total_Lang_T3.svg"), width = 9, height = 6, dpi = 150)
+```
+
+

@@ -1,0 +1,1392 @@
+---
+title: "10C_Graph_Finaux_3"
+author: "Pauline MARTINOT"
+date: "1/24/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE, include = TRUE)
+
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+library(alluvial)
+library(patchwork)
+library(gmodels)
+library(rmarkdown)
+
+```
+
+# Parameters to set before launch of the pipeline
+
+```{r}
+
+IMPUTED = "imputed" # "non-imputed"
+
+ANNEE_COHORTE = 2019 # 2018 #2020
+
+```
+
+# Data
+
+```{r}
+
+load(paste0("./data/cohort_", ANNEE_COHORTE, "_", IMPUTED, "_after_2_composite_covariate.RData"))
+load(paste0("./data/cohort_", ANNEE_COHORTE, "_", IMPUTED, "_joined.RData"))
+load(paste0("./data/cohort_", ANNEE_COHORTE, "_", IMPUTED, "_joined_n.RData"))
+load(paste0("./data/cohort_", ANNEE_COHORTE, "_", IMPUTED, "_joined30_n.RData"))
+
+SEUIL_INF_CLASS = 5
+
+
+joined30_n$Age_T1 <- as.numeric(joined30_n$Age_CP)
+joined30_n$Age_T2 <- as.numeric(joined30_n$Age_T1 + 4)
+joined30_n$Age_T3 <- as.numeric(joined30_n$Age_CP + 12)
+
+```
+
+# Graph 3 :  Modulators of the gender gap, not present in language
+
+# Graph 3A 
+
+## 3A Math Age and schooling : indiv
+
+•	Figure 3A: Decorrelation of age and schooling 
+
+JOINED30_N
+
+Decorrelation of age and schooling, Diff G-F in Math at T1, T2, T3 according to AGE
+
+
+```{r}
+# 3A  on joined30_n
+
+Math_T1 <- joined30_n[, c("Age_T1", "Sexe", "T1_Math_Rank")] %>%
+  group_by(Age_T1, Sexe) %>%
+  mutate(Math = mean(T1_Math_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(Math_T1)[1] <- "Age"
+Math_T1 <- Math_T1[!duplicated(Math_T1[, c("Age", "Sexe", "Math")]), c("Age", "Sexe", "Math")]
+Math_T1 <- Math_T1[!is.na(Math_T1$Age), ]
+Math_T1 <- pivot_wider(Math_T1, names_from = Sexe, values_from = Math)
+Math_T1$T1 <- Math_T1$Boys - Math_T1$Girls
+
+
+Math_T2 <- joined30_n[, c("Age_T2", "Sexe", "T2_Math_Rank")] %>%
+  group_by(Age_T2, Sexe) %>%
+  mutate(Math = mean(T2_Math_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(Math_T2)[1] <- "Age"
+Math_T2 <- Math_T2[!duplicated(Math_T2[, c("Age", "Sexe", "Math")]), c("Age", "Sexe", "Math")]
+Math_T2 <- Math_T2[!is.na(Math_T2$Age), ]
+Math_T2 <- pivot_wider(Math_T2, names_from = Sexe, values_from = Math)
+Math_T2$T2 <- Math_T2$Boys - Math_T2$Girls
+
+Math_T3 <- joined30_n[, c("Age_T3", "Sexe", "T3_Math_Rank")] %>%
+  group_by(Age_T3, Sexe) %>%
+  mutate(Math = mean(T3_Math_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(Math_T3)[1] <- "Age"
+Math_T3 <- Math_T3[!duplicated(Math_T3[, c("Age", "Sexe", "Math")]), c("Age", "Sexe", "Math")]
+Math_T3 <- Math_T3[!is.na(Math_T3$Age), ]
+Math_T3 <- pivot_wider(Math_T3, names_from = Sexe, values_from = Math)
+Math_T3$T3 <- Math_T3$Boys - Math_T3$Girls
+
+Math <- Math_T1[, c(1, 4)] %>% 
+  full_join(Math_T2[, c(1, 4)], by = "Age") %>%
+  full_join(Math_T3[, c(1, 4)], by = "Age")
+
+Math <- Math %>% pivot_longer(cols = c(T1, T2, T3), names_to = "Time")
+rm(Math_T1, Math_T2, Math_T3)
+
+legend_title <- "Time"
+ggplot(data = Math, aes(x = Age, y = value*100, color = Time)) +
+  geom_smooth(method = "lm", se = TRUE) +
+  geom_point(size = 4) +
+  geom_hline(yintercept = 0, col = "black") +
+  theme_minimal() +
+  theme(axis.line.y = element_line(arrow = arrow(length = unit(2, "mm")))) +  
+  theme(axis.title.x = element_text(size=9,  color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  ylab("Delta GF Maths") +
+  xlab("Age when taking the test (month)") +
+  coord_cartesian(ylim=c(-2,8)) +
+  scale_color_manual(legend_title, values=c("deepskyblue", "blue2","midnightblue")) 
+
+
+ggsave(file = paste0("./img/", ANNEE_COHORTE, "/Graph_3A_Age_Decorrelation_MATH_joined30_n_", ANNEE_COHORTE, ".svg"), width = 7, height = 5)
+
+rm(Math)
+```
+
+```{r}
+
+Math_T1 <- joined30_n[, c("Age_T1",  "D_T1_Math_Rank")] %>%
+  group_by(Age_T1) %>%
+  mutate(Math = mean(D_T1_Math_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(Math_T1)[1] <- "Age"
+Math_T1 <- Math_T1[!duplicated(Math_T1[, c("Age", "Math")]), c("Age",  "Math")]
+Math_T1 <- Math_T1[!is.na(Math_T1$Age), ]
+names(Math_T1)[names(Math_T1) == "Math"] <- "Math_T1"
+
+
+Math_T2 <- joined30_n[, c("Age_T2",  "D_T2_Math_Rank")] %>%
+  group_by(Age_T2 ) %>%
+  mutate(Math = mean(D_T2_Math_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(Math_T2)[1] <- "Age"
+Math_T2 <- Math_T2[!duplicated(Math_T2[, c("Age", "Math")]), c("Age",  "Math")]
+Math_T2 <- Math_T2[!is.na(Math_T2$Age), ]
+names(Math_T2)[names(Math_T2) == "Math"] <- "Math_T2"
+
+Math_T3 <- joined30_n[, c("Age_T3",  "D_T3_Math_Rank")] %>%
+  group_by(Age_T3) %>%
+  mutate(Math = mean(D_T3_Math_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(Math_T3)[1] <- "Age"
+Math_T3 <- Math_T3[!duplicated(Math_T3[, c("Age", "Math")]), c("Age", "Math")]
+Math_T3 <- Math_T3[!is.na(Math_T3$Age), ]
+names(Math_T3)[names(Math_T3) == "Math"] <- "Math_T3"
+
+Math <- Math_T1[, c(1, 2)] %>% 
+  full_join(Math_T2[, c(1, 2)], by = "Age") %>%
+  full_join(Math_T3[, c(1, 2)], by = "Age")
+
+Math <- Math %>% pivot_longer(cols = c(Math_T1, Math_T2, Math_T3), names_to = "Time")
+rm(Math_T1, Math_T2, Math_T3)
+
+legend_title <- "Time"
+ggplot(data = Math, aes(x = Age, y = value*100, color = Time)) +
+  geom_smooth(method = "lm", se = TRUE) +
+  geom_point(size = 4) +
+  geom_hline(yintercept = 0, col = "black") +
+  theme_minimal() +
+  theme(axis.line.y = element_line(arrow = arrow(length = unit(2, "mm")))) +  
+  theme(axis.title.x = element_text(size=9,  color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  ylab("Delta GF Maths") +
+  xlab("Age when taking the test (month)") +
+  coord_cartesian(ylim=c(-2,8)) +
+  scale_color_manual(legend_title, values=c("deepskyblue", "blue2","midnightblue")) 
+
+```
+
+
+## 3A Lang Age and schooling
+
+```{r}
+# Graph 3A bis lang : on joined30_n
+
+Math_T1 <- joined30_n[, c("Age_T1", "Sexe", "T1_Lang_Rank")] %>%
+  group_by(Age_T1, Sexe) %>%
+  mutate(Lang = mean(T1_Lang_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(Math_T1)[1] <- "Age"
+Math_T1 <- Math_T1[!duplicated(Math_T1[, c("Age", "Sexe", "Lang")]), c("Age", "Sexe", "Lang")]
+Math_T1 <- Math_T1[!is.na(Math_T1$Age), ]
+Math_T1 <- pivot_wider(Math_T1, names_from = Sexe, values_from = Lang)
+Math_T1$T1 <- Math_T1$Boys - Math_T1$Girls
+
+
+Math_T2 <- joined30_n[, c("Age_T2", "Sexe", "T2_Lang_Rank")] %>%
+  group_by(Age_T2, Sexe) %>%
+  mutate(Lang = mean(T2_Lang_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(Math_T2)[1] <- "Age"
+Math_T2 <- Math_T2[!duplicated(Math_T2[, c("Age", "Sexe", "Lang")]), c("Age", "Sexe", "Lang")]
+Math_T2 <- Math_T2[!is.na(Math_T2$Age), ]
+Math_T2 <- pivot_wider(Math_T2, names_from = Sexe, values_from = Lang)
+Math_T2$T2 <- Math_T2$Boys - Math_T2$Girls
+
+Math_T3 <- joined30_n[, c("Age_T3", "Sexe", "T3_Lang_Rank")] %>%
+  group_by(Age_T3, Sexe) %>%
+  mutate(Lang = mean(T3_Lang_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(Math_T3)[1] <- "Age"
+Math_T3 <- Math_T3[!duplicated(Math_T3[, c("Age", "Sexe", "Lang")]), c("Age", "Sexe", "Lang")]
+Math_T3 <- Math_T3[!is.na(Math_T3$Age), ]
+Math_T3 <- pivot_wider(Math_T3, names_from = Sexe, values_from = Lang)
+Math_T3$T3 <- Math_T3$Boys - Math_T3$Girls
+
+Math <- Math_T1[, c(1, 4)] %>% 
+  full_join(Math_T2[, c(1, 4)], by = "Age") %>%
+  full_join(Math_T3[, c(1, 4)], by = "Age")
+
+Math <- Math %>% pivot_longer(cols = c(T1, T2, T3), names_to = "Time")
+rm(Math_T1, Math_T2, Math_T3)
+
+legend_title <- "Time"
+ggplot(data = Math, aes(x = Age, y = value*100, color = Time)) +
+  geom_smooth(method = "lm", se = TRUE) +
+  geom_point(size = 4) +
+  ylab("Delta GF Language") +
+  xlab("Age when taking the test (month)") +
+  geom_hline(yintercept = 0, col = "black") +
+  theme_minimal() +
+  theme(axis.line.y = element_line(arrow = arrow(length = unit(2, "mm")))) + 
+  coord_cartesian(ylim=c(-7.5,2)) +
+  scale_color_manual(legend_title, values=c("#66CC00", "#006600","#003300")) 
+
+
+ggsave(file = paste0("./img/", ANNEE_COHORTE, "/Graph_3A_Age_Decorrelation_Lang_", ANNEE_COHORTE, "_joined30_n.svg"), width = 7, height = 5)
+
+rm(Math)
+```
+
+# Graph 3B : Distrib Level in math at T1 in Deciles
+
+Effect of level in math at T1 
+
+10 x le rang   
+0.21 => 2.1 = Floor (prend le seuil bas) 
+=> 2 = + 1 pour le mettre dans le bon décile. 
+si le rang est 0.1 => c'est compté dans le décile du dessus. 
+pour chaque éleve, on a mis le rang moyen. 
+Plus il y a d'éleves qui ont le meme rang moyen que lui, plus leur rang moyen baisse. 
+Donc quand on fait les déciles avec les rangs moyens, ca baisse artificiellement. 
+Donc 1 c'est le plus mauvais et 10 c'est le meilleur +++
+
+to reverse the order
+data_for_plot$Rank   <- factor(data_for_plot$Rank, levels = rev(levels(data_for_plot$Rank))) 
+
+
+### 3B initial level in math 
+
+•	Figure 3B: Effect of class initial level in math per class at T1
+
+```{r}
+
+DATA_C <- joined30_n[!is.na(joined30_n$T1_Math_Rank), c("T1_Math_Rank", "T2_Math_Rank",
+                                                        "T3_Math_Rank",
+                                                        "T1_Math_Rank_mean_per_class", "Sexe")]
+DATA_C$Mean_T1_Math_Rank_D <- cut(DATA_C$T1_Math_Rank_mean_per_class, quantile(DATA_C$T1_Math_Rank_mean_per_class, probs = 0:10/10, na.rm = T))
+DATA_C$Mean_T1_Math_Rank_D <- as.factor(DATA_C$Mean_T1_Math_Rank_D)
+DATA_D <- DATA_C[(!is.na(DATA_C$Mean_T1_Math_Rank_D)), ]
+rm(DATA_C)
+
+# Graph 
+
+Math_T1 <- DATA_D[ , c("Mean_T1_Math_Rank_D", "Sexe", "T1_Math_Rank")] %>%
+  group_by(Mean_T1_Math_Rank_D, Sexe) %>%
+  summarise(mean = mean(T1_Math_Rank)) %>%
+  ungroup()
+colnames(Math_T1)[1] <- "Categ"
+Math_T1 <- Math_T1[!duplicated(Math_T1[, c("Categ", "Sexe", "mean")]), c("Categ", "Sexe", "mean")]
+Math_T1 <- pivot_wider(Math_T1, names_from = Sexe, values_from = mean)
+Math_T1$T1 <- Math_T1$Boys - Math_T1$Girls
+
+
+Math_T2 <- DATA_D[ , c("Mean_T1_Math_Rank_D", "Sexe", "T2_Math_Rank")] %>%
+  group_by(Mean_T1_Math_Rank_D, Sexe) %>%
+  summarise(mean = mean(T2_Math_Rank)) %>%
+  ungroup()
+colnames(Math_T2)[1] <- "Categ"
+Math_T2 <- Math_T2[!duplicated(Math_T2[, c("Categ", "Sexe", "mean")]), c("Categ", "Sexe", "mean")]
+Math_T2 <- Math_T2[!is.na(Math_T2$Categ), ]
+Math_T2 <- pivot_wider(Math_T2, names_from = Sexe, values_from = mean)
+Math_T2$T2 <- Math_T2$Boys - Math_T2$Girls
+
+Math_T3 <- DATA_D[, c("Mean_T1_Math_Rank_D", "Sexe", "T3_Math_Rank")] %>%
+  group_by(Mean_T1_Math_Rank_D, Sexe) %>%
+  summarise(mean = mean(T3_Math_Rank)) %>%
+  ungroup()
+colnames(Math_T3)[1] <- "Categ"
+Math_T3 <- Math_T3[!duplicated(Math_T3[, c("Categ", "Sexe", "mean")]), c("Categ", "Sexe", "mean")]
+Math_T3 <- Math_T3[!is.na(Math_T3$Categ), ]
+Math_T3 <- pivot_wider(Math_T3, names_from = Sexe, values_from = mean)
+Math_T3$T3 <- Math_T3$Boys - Math_T3$Girls
+
+Math <- Math_T1[, c(1, 4)] %>%
+  full_join(Math_T2[, c(1, 4)], by = "Categ") %>%
+  full_join(Math_T3[, c(1, 4)], by = "Categ")
+
+Math <- Math %>% pivot_longer(cols = c(T1, T2, T3), names_to = "Time")
+rm(Math_T1, Math_T2, Math_T3, data_for_plot)
+
+# Graph printed
+
+legend_title <- "Time"
+
+ggplot(data = Math, aes(x = Categ, y = value*100, color = Time)) +
+  geom_point(fun="mean", geom = "line", size = 2.7) +
+  geom_line(aes(group = Time))+
+  geom_smooth(method = "lm", se = TRUE) +
+  ylab("Gender gap in Math (Percentile rank") +
+  xlab("Class level in math at T1 (Decile)") +
+  coord_cartesian(ylim=c(-2.5,9)) +
+  geom_hline(yintercept = 0, col = "black") +
+  theme_minimal() +
+  theme(axis.line = element_line(arrow = arrow(length = unit(2, "mm")))) + 
+  theme(axis.title.x = element_text(size=9,  color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  scale_color_manual(legend_title, values=c("deepskyblue", "blue2","midnightblue")) 
+
+ggsave(file = paste0("./img/", ANNEE_COHORTE, "/Graph_3B_Level_MathRank_", ANNEE_COHORTE, ".svg"), width = 5, height = 5)
+
+rm(DATA_D, Math)
+```
+
+
+## 3B Initial level Language
+
+```{r}
+
+DATA_C <- joined30_n[!is.na(joined30_n$T1_Lang_Rank), c("T1_Lang_Rank", "T2_Lang_Rank",
+                                                        "T3_Lang_Rank",
+                                                        "T1_Lang_Rank_mean_per_class", "Sexe")]
+DATA_C$Mean_T1_Lang_Rank_D <- cut(DATA_C$T1_Lang_Rank_mean_per_class, quantile(DATA_C$T1_Lang_Rank_mean_per_class, probs = 0:10/10, na.rm = T))
+DATA_C$Mean_T1_Lang_Rank_D <- as.factor(DATA_C$Mean_T1_Lang_Rank_D)
+DATA_D <- DATA_C[(!is.na(DATA_C$Mean_T1_Lang_Rank_D)), ]
+rm(DATA_C)
+
+# Graph 
+
+Lang_T1 <- DATA_D[ , c("Mean_T1_Lang_Rank_D", "Sexe", "T1_Lang_Rank")] %>%
+  group_by(Mean_T1_Lang_Rank_D, Sexe) %>%
+  summarise(mean = mean(T1_Lang_Rank)) %>%
+  ungroup()
+colnames(Lang_T1)[1] <- "Categ"
+Lang_T1 <- Lang_T1[!duplicated(Lang_T1[, c("Categ", "Sexe", "mean")]), c("Categ", "Sexe", "mean")]
+Lang_T1 <- pivot_wider(Lang_T1, names_from = Sexe, values_from = mean)
+Lang_T1$T1 <- Lang_T1$Boys - Lang_T1$Girls
+
+
+Lang_T2 <- DATA_D[ , c("Mean_T1_Lang_Rank_D", "Sexe", "T2_Lang_Rank")] %>%
+  group_by(Mean_T1_Lang_Rank_D, Sexe) %>%
+  summarise(mean = mean(T2_Lang_Rank)) %>%
+  ungroup()
+colnames(Lang_T2)[1] <- "Categ"
+Lang_T2 <- Lang_T2[!duplicated(Lang_T2[, c("Categ", "Sexe", "mean")]), c("Categ", "Sexe", "mean")]
+Lang_T2 <- Lang_T2[!is.na(Lang_T2$Categ), ]
+Lang_T2 <- pivot_wider(Lang_T2, names_from = Sexe, values_from = mean)
+Lang_T2$T2 <- Lang_T2$Boys - Lang_T2$Girls
+
+Lang_T3 <- DATA_D[, c("Mean_T1_Lang_Rank_D", "Sexe", "T3_Lang_Rank")] %>%
+  group_by(Mean_T1_Lang_Rank_D, Sexe) %>%
+  summarise(mean = mean(T3_Lang_Rank)) %>%
+  ungroup()
+colnames(Lang_T3)[1] <- "Categ"
+Lang_T3 <- Lang_T3[!duplicated(Lang_T3[, c("Categ", "Sexe", "mean")]), c("Categ", "Sexe", "mean")]
+Lang_T3 <- Lang_T3[!is.na(Lang_T3$Categ), ]
+Lang_T3 <- pivot_wider(Lang_T3, names_from = Sexe, values_from = mean)
+Lang_T3$T3 <- Lang_T3$Boys - Lang_T3$Girls
+
+Lang <- Lang_T1[, c(1, 4)] %>%
+  full_join(Lang_T2[, c(1, 4)], by = "Categ") %>%
+  full_join(Lang_T3[, c(1, 4)], by = "Categ")
+
+Lang <- Lang %>% pivot_longer(cols = c(T1, T2, T3), names_to = "Time")
+rm(Lang_T1, Lang_T2, Lang_T3, data_for_plot)
+
+# Graph printed
+
+legend_title <- "Time"
+
+ggplot(data = Lang, aes(x = Categ, y = value*100, color = Time)) +
+  geom_point(fun="mean", geom = "line", size = 2.7) +
+  geom_line(aes(group = Time))+
+  geom_smooth(method = "lm", se = TRUE) +
+  ylab("Gender gap in Lang") +
+  xlab("Class's Lang level's at T1 (decile)") +
+  coord_cartesian(ylim=c(-9,0)) +
+  geom_hline(yintercept = 0, col = "black") +
+  theme_minimal() +
+  theme(axis.line = element_line(arrow = arrow(length = unit(2, "mm")))) + 
+  theme(axis.title.x = element_text(size=9,  color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  scale_color_manual(legend_title, values=c("#66CC00", "#006600","#003300")) 
+
+ggsave(file = paste0("./img/", ANNEE_COHORTE, "/Graph_3B_Level_LangRank_", ANNEE_COHORTE, ".svg"), width = 5, height = 5)
+
+rm(DATA_D, Lang)
+```
+
+
+### 3B Hetero Math at T1 
+
+We defined heterogeneity variables as Level standard deviation (sd) in language and mathematics within the class, using "data_depp" and "classes" before choosing to select specific classes and before taking off different range of age 
+- Total population
+- All ages
+
+```{r}
+# Data
+
+DATA_C <- joined30_n[!is.na(joined30_n$heterogeneity_T1_Math_Rank), c("T1_Math_Rank", "T2_Math_Rank", "T3_Math_Rank", "heterogeneity_T1_Math_Rank", "Sexe")]
+DATA_C$hetero_T1_Math_Rank_D <- cut(DATA_C$heterogeneity_T1_Math_Rank, quantile(DATA_C$heterogeneity_T1_Math_Rank, probs = 0:10/10, na.rm = T))
+DATA_C$hetero_T1_Math_Rank_D <- as.factor(DATA_C$hetero_T1_Math_Rank_D)
+DATA_D <- DATA_C[(!is.na(DATA_C$hetero_T1_Math_Rank_D)), ]
+
+# Graph 
+
+Math_T1 <- DATA_D[ , c("hetero_T1_Math_Rank_D", "Sexe", "T1_Math_Rank")] %>%
+  group_by(hetero_T1_Math_Rank_D, Sexe) %>%
+  summarise(mean = mean(T1_Math_Rank)) %>%
+  ungroup()
+colnames(Math_T1)[1] <- "Categ"
+Math_T1 <- Math_T1[!duplicated(Math_T1[, c("Categ", "Sexe", "mean")]), c("Categ", "Sexe", "mean")]
+Math_T1 <- pivot_wider(Math_T1, names_from = Sexe, values_from = mean)
+Math_T1$T1 <- Math_T1$Boys - Math_T1$Girls
+
+
+Math_T2 <- DATA_D[ , c("hetero_T1_Math_Rank_D", "Sexe", "T2_Math_Rank")] %>%
+  group_by(hetero_T1_Math_Rank_D, Sexe) %>%
+  summarise(mean = mean(T2_Math_Rank)) %>%
+  ungroup()
+colnames(Math_T2)[1] <- "Categ"
+Math_T2 <- Math_T2[!duplicated(Math_T2[, c("Categ", "Sexe", "mean")]), c("Categ", "Sexe", "mean")]
+Math_T2 <- Math_T2[!is.na(Math_T2$Categ), ]
+Math_T2 <- pivot_wider(Math_T2, names_from = Sexe, values_from = mean)
+Math_T2$T2 <- Math_T2$Boys - Math_T2$Girls
+
+Math_T3 <- DATA_D[, c("hetero_T1_Math_Rank_D", "Sexe", "T3_Math_Rank")] %>%
+  group_by(hetero_T1_Math_Rank_D, Sexe) %>%
+  summarise(mean = mean(T3_Math_Rank)) %>%
+  ungroup()
+colnames(Math_T3)[1] <- "Categ"
+Math_T3 <- Math_T3[!duplicated(Math_T3[, c("Categ", "Sexe", "mean")]), c("Categ", "Sexe", "mean")]
+Math_T3 <- Math_T3[!is.na(Math_T3$Categ), ]
+Math_T3 <- pivot_wider(Math_T3, names_from = Sexe, values_from = mean)
+Math_T3$T3 <- Math_T3$Boys - Math_T3$Girls
+
+Math <- Math_T1[, c(1, 4)] %>%
+  full_join(Math_T2[, c(1, 4)], by = "Categ") %>%
+  full_join(Math_T3[, c(1, 4)], by = "Categ")
+
+Math <- Math %>% pivot_longer(cols = c(T1, T2, T3), names_to = "Time")
+rm(Math_T1, Math_T2, Math_T3, data_for_plot)
+
+# Graph printed
+
+legend_title <- "Time"
+
+ggplot(data = Math, aes(x = Categ, y = value*100, color = Time)) +
+  geom_point(fun="mean", geom = "line", size = 2.7) +
+  geom_line(aes(group = Time))+
+  geom_smooth(method = "lm", se = TRUE) +
+  ylab("Gender gap in Math") +
+  xlab("Class heterogeneity in math at T1 (Decile)") +
+  coord_cartesian(ylim=c(-2.5,9)) +
+  geom_hline(yintercept = 0, col = "black") +
+  theme_minimal() +
+  theme(axis.line = element_line(arrow = arrow(length = unit(2, "mm")))) + 
+  theme(axis.title.x = element_text(size=9,  color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  scale_color_manual(legend_title, values=c("deepskyblue", "blue2","midnightblue")) 
+
+ggsave(file = paste0("./img/", ANNEE_COHORTE, "/Graph_3C_Heterogeneity_MathRank_", ANNEE_COHORTE, ".svg"), width = 5, height = 5)
+
+rm(DATA_C, DATA_D, Math)
+
+```
+
+## 3B Hetero Lang at T1
+
+```{r}
+# Data
+
+DATA_C <- joined30_n[!is.na(joined30_n$heterogeneity_T1_Lang_Rank), c("T1_Lang_Rank", "T2_Lang_Rank", "T3_Lang_Rank", "heterogeneity_T1_Lang_Rank", "Sexe")]
+DATA_C$hetero_T1_Lang_Rank_D <- cut(DATA_C$heterogeneity_T1_Lang_Rank, quantile(DATA_C$heterogeneity_T1_Lang_Rank, probs = 0:10/10, na.rm = T))
+DATA_C$hetero_T1_Lang_Rank_D <- as.factor(DATA_C$hetero_T1_Lang_Rank_D)
+DATA_D <- DATA_C[(!is.na(DATA_C$hetero_T1_Lang_Rank_D)), ]
+
+# Graph 
+
+Math_T1 <- DATA_D[ , c("hetero_T1_Lang_Rank_D", "Sexe", "T1_Lang_Rank")] %>%
+  group_by(hetero_T1_Lang_Rank_D, Sexe) %>%
+  summarise(mean = mean(T1_Lang_Rank)) %>%
+  ungroup()
+colnames(Math_T1)[1] <- "Categ"
+Math_T1 <- Math_T1[!duplicated(Math_T1[, c("Categ", "Sexe", "mean")]), c("Categ", "Sexe", "mean")]
+Math_T1 <- pivot_wider(Math_T1, names_from = Sexe, values_from = mean)
+Math_T1$T1 <- Math_T1$Boys - Math_T1$Girls
+
+
+Math_T2 <- DATA_D[ , c("hetero_T1_Lang_Rank_D", "Sexe", "T2_Lang_Rank")] %>%
+  group_by(hetero_T1_Lang_Rank_D, Sexe) %>%
+  summarise(mean = mean(T2_Lang_Rank)) %>%
+  ungroup()
+colnames(Math_T2)[1] <- "Categ"
+Math_T2 <- Math_T2[!duplicated(Math_T2[, c("Categ", "Sexe", "mean")]), c("Categ", "Sexe", "mean")]
+Math_T2 <- Math_T2[!is.na(Math_T2$Categ), ]
+Math_T2 <- pivot_wider(Math_T2, names_from = Sexe, values_from = mean)
+Math_T2$T2 <- Math_T2$Boys - Math_T2$Girls
+
+Math_T3 <- DATA_D[, c("hetero_T1_Lang_Rank_D", "Sexe", "T3_Lang_Rank")] %>%
+  group_by(hetero_T1_Lang_Rank_D, Sexe) %>%
+  summarise(mean = mean(T3_Lang_Rank)) %>%
+  ungroup()
+colnames(Math_T3)[1] <- "Categ"
+Math_T3 <- Math_T3[!duplicated(Math_T3[, c("Categ", "Sexe", "mean")]), c("Categ", "Sexe", "mean")]
+Math_T3 <- Math_T3[!is.na(Math_T3$Categ), ]
+Math_T3 <- pivot_wider(Math_T3, names_from = Sexe, values_from = mean)
+Math_T3$T3 <- Math_T3$Boys - Math_T3$Girls
+
+Math <- Math_T1[, c(1, 4)] %>%
+  full_join(Math_T2[, c(1, 4)], by = "Categ") %>%
+  full_join(Math_T3[, c(1, 4)], by = "Categ")
+
+Math <- Math %>% pivot_longer(cols = c(T1, T2, T3), names_to = "Time")
+rm(Math_T1, Math_T2, Math_T3, data_for_plot)
+
+# Graph printed
+
+legend_title <- "Time"
+
+ggplot(data = Math, aes(x = Categ, y = value*100, color = Time)) +
+  geom_point(fun="mean", geom = "line", size = 2.7) +
+  geom_line(aes(group = Time))+
+  geom_smooth(method = "lm", se = TRUE) +
+  ylab("Gender gap in Math") +
+  xlab("Class's Math level's heterogeneity at T1 (decile)") +
+  coord_cartesian(ylim=c(-9,0)) +
+  scale_color_manual(legend_title, values=c("#66CC00", "#006600","#003300")) +
+  geom_hline(yintercept = 0, col = "black") +
+  theme_minimal() +
+  theme(axis.line = element_line(arrow = arrow(length = unit(2, "mm")))) + 
+  theme(axis.title.x = element_text(size=9,  color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  scale_color_manual(legend_title, values=c("#66CC00", "#006600","#003300")) 
+
+ggsave(file = paste0("./img/", ANNEE_COHORTE, "/Graph_3C_Heterogeneity_LangRank_", ANNEE_COHORTE, ".svg"), width = 5, height = 5)
+
+rm(DATA_C, DATA_D, Math)
+
+```
+
+
+```{r}
+
+# Data
+
+DATA_C <- joined30_n[!is.na(joined30_n$heterogeneity_T1_Lang_Rank), c("T1_Math_Rank", "T2_Math_Rank", "T3_Math_Rank", "heterogeneity_T1_Lang_Rank", "Sexe")]
+DATA_C$hetero_T1_Lang_Rank_D <- cut(DATA_C$heterogeneity_T1_Lang_Rank, quantile(DATA_C$heterogeneity_T1_Lang_Rank, probs = 0:10/10, na.rm = T))
+DATA_C$hetero_T1_Lang_Rank_D <- as.factor(DATA_C$hetero_T1_Lang_Rank_D)
+DATA_D <- DATA_C[(!is.na(DATA_C$hetero_T1_Lang_Rank_D)), ]
+
+# Graph 
+
+Math_T1 <- DATA_D[ , c("hetero_T1_Lang_Rank_D", "Sexe", "T1_Math_Rank")] %>%
+  group_by(hetero_T1_Lang_Rank_D, Sexe) %>%
+  summarise(mean = mean(T1_Math_Rank)) %>%
+  ungroup()
+colnames(Math_T1)[1] <- "Categ"
+Math_T1 <- Math_T1[!duplicated(Math_T1[, c("Categ", "Sexe", "mean")]), c("Categ", "Sexe", "mean")]
+Math_T1 <- pivot_wider(Math_T1, names_from = Sexe, values_from = mean)
+Math_T1$T1 <- Math_T1$Boys - Math_T1$Girls
+
+
+Math_T2 <- DATA_D[ , c("hetero_T1_Lang_Rank_D", "Sexe", "T2_Math_Rank")] %>%
+  group_by(hetero_T1_Lang_Rank_D, Sexe) %>%
+  summarise(mean = mean(T2_Math_Rank)) %>%
+  ungroup()
+colnames(Math_T2)[1] <- "Categ"
+Math_T2 <- Math_T2[!duplicated(Math_T2[, c("Categ", "Sexe", "mean")]), c("Categ", "Sexe", "mean")]
+Math_T2 <- Math_T2[!is.na(Math_T2$Categ), ]
+Math_T2 <- pivot_wider(Math_T2, names_from = Sexe, values_from = mean)
+Math_T2$T2 <- Math_T2$Boys - Math_T2$Girls
+
+Math_T3 <- DATA_D[, c("hetero_T1_Lang_Rank_D", "Sexe", "T3_Math_Rank")] %>%
+  group_by(hetero_T1_Lang_Rank_D, Sexe) %>%
+  summarise(mean = mean(T3_Math_Rank)) %>%
+  ungroup()
+colnames(Math_T3)[1] <- "Categ"
+Math_T3 <- Math_T3[!duplicated(Math_T3[, c("Categ", "Sexe", "mean")]), c("Categ", "Sexe", "mean")]
+Math_T3 <- Math_T3[!is.na(Math_T3$Categ), ]
+Math_T3 <- pivot_wider(Math_T3, names_from = Sexe, values_from = mean)
+Math_T3$T3 <- Math_T3$Boys - Math_T3$Girls
+
+Math <- Math_T1[, c(1, 4)] %>%
+  full_join(Math_T2[, c(1, 4)], by = "Categ") %>%
+  full_join(Math_T3[, c(1, 4)], by = "Categ")
+
+Math <- Math %>% pivot_longer(cols = c(T1, T2, T3), names_to = "Time")
+
+
+levels(DATA_D$hetero_T1_Lang_Rank_D)
+rm(Math_T1, Math_T2, Math_T3, data_for_plot)
+
+# Graph printed
+
+legend_title <- "Time"
+
+ggplot(data = Math, aes(x = Categ, y = value*100, color = Time)) +
+  geom_point(fun="mean", geom = "line", size = 2.7) +
+  geom_line(aes(group = Time))+
+  geom_smooth(method = "lm", se = TRUE) +
+  ylab("Gender gap in Math") +
+  xlab("Class's Language level's heterogeneity at T1 (decile)") +
+  coord_cartesian(ylim=c(-3,10)) +
+  scale_color_manual(legend_title, values=c("deepskyblue", "blue2","midnightblue")) +
+  geom_hline(yintercept = 0, col = "black") +
+  theme_minimal() +
+  theme(axis.line = element_line(arrow = arrow(length = unit(2, "mm")))) + 
+  theme(axis.title.x = element_text(size=9,  color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  scale_color_manual(legend_title, values=c("deepskyblue", "blue2","midnightblue")) 
+
+ggsave(file = paste0("./img/", ANNEE_COHORTE, "/Graph_3C_Heterogeneity_LangRank_", ANNEE_COHORTE, ".svg"), width = 5, height = 5)
+
+rm(DATA_C, DATA_D, Math)
+```
+
+```{r}
+DATA_C <- joined30_n[!is.na(joined30_n$heterogeneity_T1_Math_Rank), c("T1_Lang_Rank", "T2_Lang_Rank", "T3_Lang_Rank", "heterogeneity_T1_Math_Rank", "Sexe")]
+
+DATA_C$hetero_T1_Math_Rank_D <- cut(DATA_C$heterogeneity_T1_Math_Rank, quantile(DATA_C$heterogeneity_T1_Math_Rank, probs = 0:10/10, na.rm = T))
+DATA_C$hetero_T1_Math_Rank_D <- as.factor(DATA_C$hetero_T1_Math_Rank_D)
+DATA_D <- DATA_C[(!is.na(DATA_C$hetero_T1_Math_Rank_D)), ]
+
+# Graph 
+
+Math_T1 <- DATA_D[ , c("hetero_T1_Math_Rank_D", "Sexe", "T1_Lang_Rank")] %>%
+  group_by(hetero_T1_Math_Rank_D, Sexe) %>%
+  summarise(mean = mean(T1_Lang_Rank)) %>%
+  ungroup()
+colnames(Math_T1)[1] <- "Categ"
+Math_T1 <- Math_T1[!duplicated(Math_T1[, c("Categ", "Sexe", "mean")]), c("Categ", "Sexe", "mean")]
+Math_T1 <- pivot_wider(Math_T1, names_from = Sexe, values_from = mean)
+Math_T1$T1 <- Math_T1$Boys - Math_T1$Girls
+
+
+Math_T2 <- DATA_D[ , c("hetero_T1_Math_Rank_D", "Sexe", "T2_Lang_Rank")] %>%
+  group_by(hetero_T1_Math_Rank_D, Sexe) %>%
+  summarise(mean = mean(T2_Lang_Rank)) %>%
+  ungroup()
+colnames(Math_T2)[1] <- "Categ"
+Math_T2 <- Math_T2[!duplicated(Math_T2[, c("Categ", "Sexe", "mean")]), c("Categ", "Sexe", "mean")]
+Math_T2 <- Math_T2[!is.na(Math_T2$Categ), ]
+Math_T2 <- pivot_wider(Math_T2, names_from = Sexe, values_from = mean)
+Math_T2$T2 <- Math_T2$Boys - Math_T2$Girls
+
+Math_T3 <- DATA_D[, c("hetero_T1_Math_Rank_D", "Sexe", "T3_Lang_Rank")] %>%
+  group_by(hetero_T1_Math_Rank_D, Sexe) %>%
+  summarise(mean = mean(T3_Lang_Rank)) %>%
+  ungroup()
+colnames(Math_T3)[1] <- "Categ"
+Math_T3 <- Math_T3[!duplicated(Math_T3[, c("Categ", "Sexe", "mean")]), c("Categ", "Sexe", "mean")]
+Math_T3 <- Math_T3[!is.na(Math_T3$Categ), ]
+Math_T3 <- pivot_wider(Math_T3, names_from = Sexe, values_from = mean)
+Math_T3$T3 <- Math_T3$Boys - Math_T3$Girls
+
+Math <- Math_T1[, c(1, 4)] %>%
+  full_join(Math_T2[, c(1, 4)], by = "Categ") %>%
+  full_join(Math_T3[, c(1, 4)], by = "Categ")
+
+Math <- Math %>% pivot_longer(cols = c(T1, T2, T3), names_to = "Time")
+levels(DATA_D$hetero_T1_Math_Rank_D)
+
+rm(Math_T1, Math_T2, Math_T3, data_for_plot)
+
+# Graph printed
+
+legend_title <- "Time"
+
+ggplot(data = Math, aes(x = Categ, y = value*100, color = Time)) +
+  geom_point(fun="mean", geom = "line", size = 2.7) +
+  geom_line(aes(group = Time))+
+  geom_smooth(method = "lm", se = TRUE) +
+  ylab("Gender gap in Lang") +
+  xlab("Class's Math level's heterogeneity at T1 (decile)") +
+  coord_cartesian(ylim=c(-10,2)) +
+  scale_color_manual(legend_title, values=c("#66CC00", "#006600","#003300")) +
+  geom_hline(yintercept = 0, col = "black") +
+  theme_minimal() +
+  theme(axis.line = element_line(arrow = arrow(length = unit(2, "mm")))) + 
+  theme(axis.title.x = element_text(size=9,  color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  scale_color_manual(legend_title, values=c("#66CC00", "#006600","#003300")) 
+
+
+
+
+ggsave(file = paste0("./img/", ANNEE_COHORTE, "/Graph_3C_Heterogeneity_LangRank_", ANNEE_COHORTE, ".svg"), width = 5, height = 5)
+
+#rm(DATA_C, DATA_D, Math)
+
+
+```
+
+
+## 3B Class Size x Math
+
+
+•	Figure 3D : Effect of class size 
+
+on joined30_n
+
+```{r}
+
+joined30_n$Taille_Classe <- as.factor(joined30_n$Taille_Classe)
+
+Math_T1 <- joined30_n[ , c("Taille_Classe", "Sexe", "T1_Math_Rank")] %>%
+  group_by(Taille_Classe, Sexe) %>%
+  mutate(Math = mean(T1_Math_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(Math_T1)[1] <- "Categ"
+Math_T1 <- Math_T1[!duplicated(Math_T1[, c("Categ", "Sexe", "Math")]), c("Categ", "Sexe", "Math")]
+Math_T1 <- Math_T1[!is.na(Math_T1$Categ), ]
+Math_T1 <- pivot_wider(Math_T1, names_from = Sexe, values_from = Math)
+Math_T1$T1 <- Math_T1$Boys - Math_T1$Girls
+
+
+Math_T2 <- joined30_n[, c("Taille_Classe", "Sexe", "T2_Math_Rank")] %>%
+  group_by(Taille_Classe, Sexe) %>%
+  mutate(Math = mean(T2_Math_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(Math_T2)[1] <- "Categ"
+Math_T2 <- Math_T2[!duplicated(Math_T2[, c("Categ", "Sexe", "Math")]), c("Categ", "Sexe", "Math")]
+Math_T2 <- Math_T2[!is.na(Math_T2$Categ), ]
+Math_T2 <- pivot_wider(Math_T2, names_from = Sexe, values_from = Math)
+Math_T2$T2 <- Math_T2$Boys - Math_T2$Girls
+
+Math_T3 <- joined30_n[, c("Taille_Classe", "Sexe", "T3_Math_Rank")] %>%
+  group_by(Taille_Classe, Sexe) %>%
+  mutate(Math = mean(T3_Math_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(Math_T3)[1] <- "Categ"
+Math_T3 <- Math_T3[!duplicated(Math_T3[, c("Categ", "Sexe", "Math")]), c("Categ", "Sexe", "Math")]
+Math_T3 <- Math_T3[!is.na(Math_T3$Categ), ]
+Math_T3 <- pivot_wider(Math_T3, names_from = Sexe, values_from = Math)
+Math_T3$T3 <- Math_T3$Boys - Math_T3$Girls
+
+Math <- Math_T1[, c(1, 4)] %>% 
+  full_join(Math_T2[, c(1, 4)], by = "Categ") %>%
+  full_join(Math_T3[, c(1, 4)], by = "Categ")
+
+Math <- Math %>% pivot_longer(cols = c(T1, T2, T3), names_to = "Time")
+rm(Math_T1, Math_T2, Math_T3)
+
+legend_title <- "Time"
+
+ggplot(data = Math, aes(x = Categ, y = value*100, color = Time)) +
+  geom_point(fun="mean", geom = "line", size = 2.7) +
+  geom_line(aes(group = Time))+
+  geom_smooth(method = "lm", se = TRUE) +
+  ylab("Gender gap in Math") +
+  xlab("Class size") +
+  coord_cartesian(ylim=c(-2.5,9)) +
+  geom_hline(yintercept = 0, col = "black") +
+  theme_minimal() +
+  theme(axis.line = element_line(arrow = arrow(length = unit(2, "mm")))) + 
+  theme(axis.title.x = element_text(size=9,  color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  scale_color_manual(legend_title, values=c("deepskyblue", "blue2","midnightblue")) 
+
+ggsave(file = paste0("./img/", ANNEE_COHORTE, "/Graph_3D_Class_Size_MathRank_", ANNEE_COHORTE, ".svg"), width = 5, height = 5)
+
+rm(Math)
+
+```
+## 3B Class Size x Lang
+
+```{r}
+
+joined30_n$Taille_Classe <- as.factor(joined30_n$Taille_Classe)
+
+Lang_T1 <- joined30_n[ , c("Taille_Classe", "Sexe", "T1_Lang_Rank")] %>%
+  group_by(Taille_Classe, Sexe) %>%
+  mutate(Lang = mean(T1_Lang_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(Lang_T1)[1] <- "Categ"
+Lang_T1 <- Lang_T1[!duplicated(Lang_T1[, c("Categ", "Sexe", "Lang")]), c("Categ", "Sexe", "Lang")]
+Lang_T1 <- Lang_T1[!is.na(Lang_T1$Categ), ]
+Lang_T1 <- pivot_wider(Lang_T1, names_from = Sexe, values_from = Lang)
+Lang_T1$T1 <- Lang_T1$Boys - Lang_T1$Girls
+
+
+Lang_T2 <- joined30_n[, c("Taille_Classe", "Sexe", "T2_Lang_Rank")] %>%
+  group_by(Taille_Classe, Sexe) %>%
+  mutate(Lang = mean(T2_Lang_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(Lang_T2)[1] <- "Categ"
+Lang_T2 <- Lang_T2[!duplicated(Lang_T2[, c("Categ", "Sexe", "Lang")]), c("Categ", "Sexe", "Lang")]
+Lang_T2 <- Lang_T2[!is.na(Lang_T2$Categ), ]
+Lang_T2 <- pivot_wider(Lang_T2, names_from = Sexe, values_from = Lang)
+Lang_T2$T2 <- Lang_T2$Boys - Lang_T2$Girls
+
+Lang_T3 <- joined30_n[, c("Taille_Classe", "Sexe", "T3_Lang_Rank")] %>%
+  group_by(Taille_Classe, Sexe) %>%
+  mutate(Lang = mean(T3_Lang_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(Lang_T3)[1] <- "Categ"
+Lang_T3 <- Lang_T3[!duplicated(Lang_T3[, c("Categ", "Sexe", "Lang")]), c("Categ", "Sexe", "Lang")]
+Lang_T3 <- Lang_T3[!is.na(Lang_T3$Categ), ]
+Lang_T3 <- pivot_wider(Lang_T3, names_from = Sexe, values_from = Lang)
+Lang_T3$T3 <- Lang_T3$Boys - Lang_T3$Girls
+
+Lang <- Lang_T1[, c(1, 4)] %>% 
+  full_join(Lang_T2[, c(1, 4)], by = "Categ") %>%
+  full_join(Lang_T3[, c(1, 4)], by = "Categ")
+
+Lang <- Lang %>% pivot_longer(cols = c(T1, T2, T3), names_to = "Time")
+rm(Lang_T1, Lang_T2, Lang_T3)
+
+legend_title <- "Time"
+
+ggplot(data = Lang, aes(x = Categ, y = value*100, color = Time)) +
+  geom_point(fun="mean", geom = "line", size = 2.7) +
+  geom_line(aes(group = Time))+
+  geom_smooth(method = "lm", se = TRUE) +
+  ylab("Gender gap in Lang") +
+  xlab("Class size") +
+  coord_cartesian(ylim=c(-9,0)) +
+  scale_color_manual(legend_title, values=c("#66CC00", "#006600","#003300")) +
+  geom_hline(yintercept = 0, col = "black") +
+  theme_minimal() +
+  theme(axis.line = element_line(arrow = arrow(length = unit(2, "mm")))) + 
+  theme(axis.title.x = element_text(size=9,  color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=9, color="black", angle=0, hjust = 1)) 
+
+ggsave(file = paste0("./img/", ANNEE_COHORTE, "/Graph_3D_Class_Size_LangRank_", ANNEE_COHORTE, ".svg"), width = 5, height = 5)
+
+rm(Lang)
+```
+
+## 3B Class Mixity x Math at T1 
+
+Boy_proportion was calcultated on data_depp with all students.
+Then, we consider only data of joined30_n
+
+•	Figure 3E: Effect of Boys/Girls proportions among best and worst math level’ deciles (PENNER) 
+
+Effect of mixity in class (+PENNER) : Proportion of girls or boys in a class was not associated with a gender gap variation.
+ 
+```{r}
+
+joined_nn <- joined30_n 
+DATA_D <- joined_nn[(!is.na(joined_nn$boy_proportion)) &
+                    (!is.na(joined_nn$D_T1_Math_Rank)) &
+                    (!is.na(joined_nn$D_T2_Math_Rank)) &
+                    (!is.na(joined_nn$D_T3_Math_Rank)),
+                  c("ID_etab_class", "D_T1_Math_Rank", "D_T2_Math_Rank",
+                    "D_T3_Math_Rank","boy_proportion") ]
+
+# Transform boy_proportion per class in D3 parts
+
+DATA_D$boy_proportion <- as.numeric(DATA_D$boy_proportion)
+DATA_D$boy_proportion_D <- cut(DATA_D$boy_proportion, quantile(DATA_D$boy_proportion, probs = 0:9/9, na.rm = T))
+DATA_D$boy_proportion_D <- as.factor(DATA_D$boy_proportion_D)
+table(DATA_D$boy_proportion_D)
+
+# Conceive 3 dataframe
+
+MathT1 <- DATA_D[ !is.na(DATA_D$boy_proportion_D), c("boy_proportion_D", "D_T1_Math_Rank")] %>%
+  group_by(boy_proportion_D) %>%
+  mutate(Math = mean(D_T1_Math_Rank , na.rm = T)) %>%
+  ungroup()
+colnames(MathT1)[1] <- "Categ"
+colnames(MathT1)[2] <- "X"
+MathT1 <- MathT1[!duplicated(MathT1[, c("Categ","Math")]), c("Categ",  "Math")]
+colnames(MathT1)[2] <- "T1"
+
+MathT2 <- DATA_D[ !is.na(DATA_D$boy_proportion_D), c("boy_proportion_D", "D_T2_Math_Rank")] %>%
+  group_by(boy_proportion_D) %>%
+  mutate(Math = mean(D_T2_Math_Rank , na.rm = T)) %>%
+  ungroup()
+colnames(MathT2)[1] <- "Categ"
+colnames(MathT2)[2] <- "X"
+MathT2 <- MathT2[!duplicated(MathT2[, c("Categ","Math")]), c("Categ",  "Math")]
+colnames(MathT2)[2] <- "T2"
+
+MathT3 <- DATA_D[ !is.na(DATA_D$boy_proportion_D), c("boy_proportion_D", "D_T3_Math_Rank")] %>%
+  group_by(boy_proportion_D) %>%
+  mutate(Math = mean(D_T3_Math_Rank , na.rm = T)) %>%
+  ungroup()
+colnames(MathT3)[1] <- "Categ"
+colnames(MathT3)[2] <- "X"
+MathT3 <- MathT3[!duplicated(MathT3[, c("Categ","Math")]), c("Categ",  "Math")]
+colnames(MathT3)[2] <- "T3"
+
+
+# Common Data frame and graph
+
+Math_N <- MathT1[, c(1, 2)] %>% 
+  full_join(MathT2[, c(1, 2)], by = "Categ") %>%
+  full_join(MathT3[, c(1, 2)], by = "Categ")
+
+MathN <- Math_N %>% pivot_longer(cols = c(T1, T2, T3), names_to = "Time")
+rm(MathT1, MathT2, MathT3, Math_N)
+
+# Graph 
+
+legend_title <- "Time"
+
+ggplot(data = MathN, aes(x = Categ, y = value*100, group = Time, color = Time)) +
+  geom_point(fun="mean", geom = "line", size = 2.7) +
+  geom_line() +
+  coord_cartesian(ylim=c(-2.5,9)) +
+  geom_hline(yintercept = 0, col = "black") +
+  theme_minimal() +
+  theme(axis.line = element_line(arrow = arrow(length = unit(2, "mm")))) + 
+  theme(axis.title.x = element_text(size=9,  color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  scale_color_manual(legend_title, values=c("deepskyblue", "blue2","midnightblue")) +
+  ylab("Gender gap in math") +
+  xlab("Boy proportion per class")
+
+ggsave(file = paste0("./img/", ANNEE_COHORTE, "/Graph_3C_Mixity_MathRank_", ANNEE_COHORTE, ".svg"), width = 5, height = 5)
+
+rm(DATA_D, MathN, joined_nn)
+```
+
+
+## 3B Class Mixity Language at T1 
+
+Boy_proportion was calcultated on data_depp with all students.
+Then, we consider only data of joined30_n
+
+```{r}
+
+joined_nn <- joined30_n 
+DATA_D <- joined_nn[(!is.na(joined_nn$boy_proportion)) &
+                    (!is.na(joined_nn$D_T1_Lang_Rank)) &
+                    (!is.na(joined_nn$D_T2_Lang_Rank)) &
+                    (!is.na(joined_nn$D_T3_Lang_Rank)),
+                  c("ID_etab_class", "D_T1_Lang_Rank", "D_T2_Lang_Rank",
+                    "D_T3_Lang_Rank","boy_proportion") ]
+
+# Transform boy_proportion per class in D3 parts
+
+DATA_D$boy_proportion <- as.numeric(DATA_D$boy_proportion)
+DATA_D$boy_proportion_D <- cut(DATA_D$boy_proportion, quantile(DATA_D$boy_proportion, probs = 0:9/9, na.rm = T))
+DATA_D$boy_proportion_D <- as.factor(DATA_D$boy_proportion_D)
+table(DATA_D$boy_proportion_D)
+
+# Conceive 3 dataframe
+
+LangT1 <- DATA_D[ !is.na(DATA_D$boy_proportion_D), c("boy_proportion_D", "D_T1_Lang_Rank")] %>%
+  group_by(boy_proportion_D) %>%
+  mutate(Lang = mean(D_T1_Lang_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(LangT1)[1] <- "Categ"
+colnames(LangT1)[2] <- "X"
+LangT1 <- LangT1[!duplicated(LangT1[, c("Categ","Lang")]), c("Categ",  "Lang")]
+colnames(LangT1)[2] <- "T1"
+
+LangT2 <- DATA_D[ !is.na(DATA_D$boy_proportion_D), c("boy_proportion_D", "D_T2_Lang_Rank")] %>%
+  group_by(boy_proportion_D) %>%
+  mutate(Lang = mean(D_T2_Lang_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(LangT2)[1] <- "Categ"
+colnames(LangT2)[2] <- "X"
+LangT2 <- LangT2[!duplicated(LangT2[, c("Categ","Lang")]), c("Categ",  "Lang")]
+colnames(LangT2)[2] <- "T2"
+
+LangT3 <- DATA_D[ !is.na(DATA_D$boy_proportion_D), c("boy_proportion_D", "D_T3_Lang_Rank")] %>%
+  group_by(boy_proportion_D) %>%
+  mutate(Lang = mean(D_T3_Lang_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(LangT3)[1] <- "Categ"
+colnames(LangT3)[2] <- "X"
+LangT3 <- LangT3[!duplicated(LangT3[, c("Categ","Lang")]), c("Categ",  "Lang")]
+colnames(LangT3)[2] <- "T3"
+
+
+# Common Data frame and graph
+
+Lang_N <- LangT1[, c(1, 2)] %>% 
+  full_join(LangT2[, c(1, 2)], by = "Categ") %>%
+  full_join(LangT3[, c(1, 2)], by = "Categ")
+
+LangN <- Lang_N %>% pivot_longer(cols = c(T1, T2, T3), names_to = "Time")
+rm(LangT1, LangT2, LangT3, Lang_N)
+
+# Graph 
+
+legend_title <- "Time"
+
+ggplot(data = LangN, aes(x = Categ, y = value, group = Time, color = Time)) +
+  geom_point(fun="mean", geom = "line", size = 2.7) +
+  geom_line() +
+  scale_color_manual(legend_title, values=c("#66CC00", "#006600","#003300")) +
+  geom_hline(yintercept = 0, col = "black") +
+  theme_minimal() +
+  theme(axis.line = element_line(arrow = arrow(length = unit(2, "mm")))) + 
+  theme(axis.title.x = element_text(size=9,  color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  coord_cartesian(ylim=c(-0.09,0)) +
+  ylab("Delta GF Lang per exercise") +
+  xlab("Boy proportion (grade)")
+
+ggsave(file = paste0("./img/", ANNEE_COHORTE, "/Graph_3Cbis_Mixity_Lang_Rank_", ANNEE_COHORTE, ".svg"), width = 5, height = 5)
+
+rm(DATA_D, LangN, joined_nn)
+
+```
+
+
+
+# Graph 3C : First of class Math WITHOUT 1st of class, joined30, normal age
+
+Figure 3E: Effect of 1st of class in math at T1 : Regarding if the ”role model” in math or language was a girl or a boy, had a significant association with a gender gap variation.
+
+### 3C Math Data without first of class Math
+
+```{r}
+
+# nrow(joined30_n[joined30_n$First_mean_sexe_in_T1_Math_Rank > 0, ])
+# joined30_n_1stBoys<- joined30_n[joined30_n$First_mean_sexe_in_T1_Math_Rank > 0, ]
+# nrow(unique(joined30_n_1stBoys[joined30_n_1stBoys$ID_etab_class, ]))
+# 
+# nrow(joined30_n[joined30_n$First_mean_sexe_in_T1_Math_Rank < 0, ])
+# joined30_n_1stGirls<- joined30_n[joined30_n$First_mean_sexe_in_T1_Math_Rank < 0, ]
+# nrow(joined30_n[joined30_n$First_mean_sexe_in_T1_Math_Rank == 0, ])
+
+```
+
+
+```{r echo=TRUE}
+
+# data without 1st of class
+
+# joined30_n$first_in_T1_Math_Rank = TRUE or FALSE
+# joined30_n$First_mean_sexe_in_T1_Math_Rank = 0.5 to -0.5
+
+# Selection of data without first of class in math
+
+DATA_int <- joined30_n[joined30_n$first_in_T1_Math_Rank == FALSE , c("T1_Math_Rank",
+                                                                     "T2_Math_Rank",
+                                                                "T3_Math_Rank",
+                                                                "D_T1_Math_Rank_wo_first",
+                                                                "D_T2_Math_Rank_wo_first",
+                                                                "D_T3_Math_Rank_wo_first",
+                                                                "T1_Lang_Rank",
+                                                                "T2_Lang_Rank", 
+                                                                "T3_Lang_Rank",
+                                                                "D_T1_Lang_Rank_wo_first",
+                                                                "D_T2_Lang_Rank_wo_first",
+                                                                "D_T3_Lang_Rank_wo_first",
+                                                                "Sexe", "Categ_Etab_CP",
+                                                                "Age_CP", "Age_T1", "Age_T2", "Age_T3",
+                                                                "First_mean_sexe_in_T1_Math_Rank",
+                                                                "ID_etab_class")]
+
+DATA_int$What_first <- case_when(DATA_int$First_mean_sexe_in_T1_Math_Rank > 0 ~ "Boys",
+                                 DATA_int$First_mean_sexe_in_T1_Math_Rank < 0 ~ "Girls")
+DATA_int$What_first <- as.factor(DATA_int$What_first)
+
+synthetic_grades <- c("T1_Math_Rank", "T2_Math_Rank", "T3_Math_Rank")
+
+synthetic_D <- c("D_T1_Math_Rank_wo_first", "D_T2_Math_Rank_wo_first", "D_T3_Math_Rank_wo_first")
+
+# Among non-first of class, selection of whose in a class with a majority of first as boys or girls
+
+DATA_int_G  <- DATA_int[DATA_int$First_mean_sexe_in_T1_Math_Rank > 0 , ]
+DATA_int_F  <- DATA_int[DATA_int$First_mean_sexe_in_T1_Math_Rank < 0 , ]
+
+# DATA_int_GF <- DATA_int[DATA_int$First_mean_sexe_in_T1_Math_Rank == 0 , ]
+
+# How many classes in DATA_int_G
+all_classes_ids <- unique(DATA_int_G$ID_etab_class)
+# Instantiate
+classes <- DATA_int_G[, c("ID_etab_class", "Categ_Etab_CP")] %>%
+  group_by(ID_etab_class, Categ_Etab_CP)
+classes <- unique(classes)
+# Sanity check
+nrow(classes) ==  length(all_classes_ids)
+
+# How many classes in DATA_int_F
+all_classes_ids <- unique(DATA_int_F$ID_etab_class)
+# Instantiate
+classes <- DATA_int_F[, c("ID_etab_class", "Categ_Etab_CP")] %>%
+  group_by(ID_etab_class, Categ_Etab_CP)
+classes <- unique(classes)
+# Sanity check
+nrow(classes) ==  length(all_classes_ids)
+
+```
+
+### 3C Math Boys #1 wo 1st per individual joined30_n %>% Age
+
+```{r}
+
+Math_T1 <- DATA_int_G[, c("Age_T1", "Sexe", "T1_Math_Rank")] %>%
+  group_by(Age_T1, Sexe) %>%
+  mutate(Math = mean(T1_Math_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(Math_T1)[1] <- "Age"
+Math_T1 <- Math_T1[!duplicated(Math_T1[, c("Age", "Sexe", "Math")]), c("Age", "Sexe", "Math")]
+Math_T1 <- Math_T1[!is.na(Math_T1$Age), ]
+Math_T1 <- pivot_wider(Math_T1, names_from = Sexe, values_from = Math)
+Math_T1$T1 <- Math_T1$Boys - Math_T1$Girls
+
+
+Math_T2 <- DATA_int_G[, c("Age_T2", "Sexe", "T2_Math_Rank")] %>%
+  group_by(Age_T2, Sexe) %>%
+  mutate(Math = mean(T2_Math_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(Math_T2)[1] <- "Age"
+Math_T2 <- Math_T2[!duplicated(Math_T2[, c("Age", "Sexe", "Math")]), c("Age", "Sexe", "Math")]
+Math_T2 <- Math_T2[!is.na(Math_T2$Age), ]
+Math_T2 <- pivot_wider(Math_T2, names_from = Sexe, values_from = Math)
+Math_T2$T2 <- Math_T2$Boys - Math_T2$Girls
+
+Math_T3 <- DATA_int_G[, c("Age_T3", "Sexe", "T3_Math_Rank")] %>%
+  group_by(Age_T3, Sexe) %>%
+  mutate(Math = mean(T3_Math_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(Math_T3)[1] <- "Age"
+Math_T3 <- Math_T3[!duplicated(Math_T3[, c("Age", "Sexe", "Math")]), c("Age", "Sexe", "Math")]
+Math_T3 <- Math_T3[!is.na(Math_T3$Age), ]
+Math_T3 <- pivot_wider(Math_T3, names_from = Sexe, values_from = Math)
+Math_T3$T3 <- Math_T3$Boys - Math_T3$Girls
+
+Math <- Math_T1[, c(1, 4)] %>% 
+  full_join(Math_T2[, c(1, 4)], by = "Age") %>%
+  full_join(Math_T3[, c(1, 4)], by = "Age")
+
+Math <- Math %>% pivot_longer(cols = c(T1, T2, T3), names_to = "Time")
+rm(Math_T1, Math_T2, Math_T3)
+
+legend_title <- "Time"
+ggplot(data = Math, aes(x = Age, y = value*100, color = Time)) +
+  geom_smooth(method = "lm", se = TRUE) +
+  geom_point(size = 4) +
+  geom_hline(yintercept = 0, col = "black") +
+  theme_minimal() +
+  theme(axis.line.y = element_line(arrow = arrow(length = unit(2, "mm")))) +  
+  theme(axis.title.x = element_text(size=9,  color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  ylab("Delta GF Maths") +
+  xlab("Age when taking the test (month)") +
+  coord_cartesian(ylim=c(-2,8)) +
+  scale_color_manual(legend_title, values=c("deepskyblue", "blue2","midnightblue")) 
+
+ggsave(file = paste0("./img/", ANNEE_COHORTE, "/Graph_3C_Boys_First_Math_wofirst_joined30_n_VF_", ANNEE_COHORTE, ".svg"), width = 7, height = 5)
+
+```
+### 3C Math Girls
+
+```{r}
+Math_T1 <- DATA_int_F[, c("Age_T1", "Sexe", "T1_Math_Rank")] %>%
+  group_by(Age_T1, Sexe) %>%
+  mutate(Math = mean(T1_Math_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(Math_T1)[1] <- "Age"
+Math_T1 <- Math_T1[!duplicated(Math_T1[, c("Age", "Sexe", "Math")]), c("Age", "Sexe", "Math")]
+Math_T1 <- Math_T1[!is.na(Math_T1$Age), ]
+Math_T1 <- pivot_wider(Math_T1, names_from = Sexe, values_from = Math)
+Math_T1$T1 <- Math_T1$Boys - Math_T1$Girls
+
+
+Math_T2 <- DATA_int_F[, c("Age_T2", "Sexe", "T2_Math_Rank")] %>%
+  group_by(Age_T2, Sexe) %>%
+  mutate(Math = mean(T2_Math_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(Math_T2)[1] <- "Age"
+Math_T2 <- Math_T2[!duplicated(Math_T2[, c("Age", "Sexe", "Math")]), c("Age", "Sexe", "Math")]
+Math_T2 <- Math_T2[!is.na(Math_T2$Age), ]
+Math_T2 <- pivot_wider(Math_T2, names_from = Sexe, values_from = Math)
+Math_T2$T2 <- Math_T2$Boys - Math_T2$Girls
+
+Math_T3 <- DATA_int_F[, c("Age_T3", "Sexe", "T3_Math_Rank")] %>%
+  group_by(Age_T3, Sexe) %>%
+  mutate(Math = mean(T3_Math_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(Math_T3)[1] <- "Age"
+Math_T3 <- Math_T3[!duplicated(Math_T3[, c("Age", "Sexe", "Math")]), c("Age", "Sexe", "Math")]
+Math_T3 <- Math_T3[!is.na(Math_T3$Age), ]
+Math_T3 <- pivot_wider(Math_T3, names_from = Sexe, values_from = Math)
+Math_T3$T3 <- Math_T3$Boys - Math_T3$Girls
+
+Math <- Math_T1[, c(1, 4)] %>% 
+  full_join(Math_T2[, c(1, 4)], by = "Age") %>%
+  full_join(Math_T3[, c(1, 4)], by = "Age")
+
+Math <- Math %>% pivot_longer(cols = c(T1, T2, T3), names_to = "Time")
+rm(Math_T1, Math_T2, Math_T3)
+
+legend_title <- "Time"
+ggplot(data = Math, aes(x = Age, y = value*100, color = Time)) +
+  geom_smooth(method = "lm", se = TRUE) +
+  geom_point(size = 4) +
+  geom_hline(yintercept = 0, col = "black") +
+  theme_minimal() +
+  theme(axis.line.y = element_line(arrow = arrow(length = unit(2, "mm")))) +  
+  theme(axis.title.x = element_text(size=9,  color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  ylab("Delta GF Maths") +
+  xlab("Age when taking the test (month)") +
+  coord_cartesian(ylim=c(-2,8)) +
+  scale_color_manual(legend_title, values=c("deepskyblue", "blue2","midnightblue")) 
+
+ggsave(file = paste0("./img/", ANNEE_COHORTE, "/Graph_3C_Girls_First_Math_wofirst_joined30_n_VF_", ANNEE_COHORTE, ".svg"), width = 7, height = 5)
+```
+
+
+
+### 3C lang Data without first of class Lang
+
+```{r echo=TRUE}
+
+# data without 1st of class
+
+DATA_int <- joined30_n[joined30_n$first_in_T1_Lang_Rank == FALSE , c("T1_Math_Rank", "T2_Math_Rank",
+                                                                "T3_Math_Rank",
+                                                                "D_T1_Math_Rank_wo_first",
+                                                                "D_T2_Math_Rank_wo_first",
+                                                                "D_T3_Math_Rank_wo_first",
+                                                                "T1_Lang_Rank",
+                                                                "T2_Lang_Rank", 
+                                                                "T3_Lang_Rank",
+                                                                "D_T1_Lang_Rank_wo_first",
+                                                                "D_T2_Lang_Rank_wo_first",
+                                                                "D_T3_Lang_Rank_wo_first",
+                                                                "Sexe", "Categ_Etab_CP",
+                                                                "Age_CP", "Age_T1", "Age_T2", "Age_T3",
+                                                                "First_mean_sexe_in_T1_Lang_Rank",
+                                                                "ID_etab_class")]
+
+DATA_int$What_first <- case_when(DATA_int$First_mean_sexe_in_T1_Lang_Rank > 0 ~ "Boys",
+                                 DATA_int$First_mean_sexe_in_T1_Lang_Rank < 0 ~ "Girls")
+DATA_int$What_first <- as.factor(DATA_int$What_first)
+
+synthetic_grades <- c("T1_Lang_Rank", "T2_Lang_Rank", "T3_Lang_Rank")
+
+
+DATA_int_G  <- DATA_int[DATA_int$First_mean_sexe_in_T1_Lang_Rank > 0 , ]
+DATA_int_F  <- DATA_int[DATA_int$First_mean_sexe_in_T1_Lang_Rank < 0 , ]
+# DATA_int_GF <- DATA_int[DATA_int$First_mean_sexe_in_T1_Lang_Rank == 0 , ]
+
+```
+
+### 3C lang Boys #1 wo 1st per individual joined30_n %>% Age
+
+```{r}
+
+Lang_T1 <- DATA_int_G[, c("Age_T1", "Sexe", "T1_Lang_Rank")] %>%
+  group_by(Age_T1, Sexe) %>%
+  mutate(Lang = mean(T1_Lang_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(Lang_T1)[1] <- "Age"
+Lang_T1 <- Lang_T1[!duplicated(Lang_T1[, c("Age", "Sexe", "Lang")]), c("Age", "Sexe", "Lang")]
+Lang_T1 <- Lang_T1[!is.na(Lang_T1$Age), ]
+Lang_T1 <- pivot_wider(Lang_T1, names_from = Sexe, values_from = Lang)
+Lang_T1$T1 <- Lang_T1$Boys - Lang_T1$Girls
+
+
+Lang_T2 <- DATA_int_G[, c("Age_T2", "Sexe", "T2_Lang_Rank")] %>%
+  group_by(Age_T2, Sexe) %>%
+  mutate(Lang = mean(T2_Lang_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(Lang_T2)[1] <- "Age"
+Lang_T2 <- Lang_T2[!duplicated(Lang_T2[, c("Age", "Sexe", "Lang")]), c("Age", "Sexe", "Lang")]
+Lang_T2 <- Lang_T2[!is.na(Lang_T2$Age), ]
+Lang_T2 <- pivot_wider(Lang_T2, names_from = Sexe, values_from = Lang)
+Lang_T2$T2 <- Lang_T2$Boys - Lang_T2$Girls
+
+Lang_T3 <- DATA_int_G[, c("Age_T3", "Sexe", "T3_Lang_Rank")] %>%
+  group_by(Age_T3, Sexe) %>%
+  mutate(Lang = mean(T3_Lang_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(Lang_T3)[1] <- "Age"
+Lang_T3 <- Lang_T3[!duplicated(Lang_T3[, c("Age", "Sexe", "Lang")]), c("Age", "Sexe", "Lang")]
+Lang_T3 <- Lang_T3[!is.na(Lang_T3$Age), ]
+Lang_T3 <- pivot_wider(Lang_T3, names_from = Sexe, values_from = Lang)
+Lang_T3$T3 <- Lang_T3$Boys - Lang_T3$Girls
+
+Lang <- Lang_T1[, c(1, 4)] %>% 
+  full_join(Lang_T2[, c(1, 4)], by = "Age") %>%
+  full_join(Lang_T3[, c(1, 4)], by = "Age")
+
+Lang <- Lang %>% pivot_longer(cols = c(T1, T2, T3), names_to = "Time")
+rm(Lang_T1, Lang_T2, Lang_T3)
+
+legend_title <- "Time"
+ggplot(data = Lang, aes(x = Age, y = value*100, color = Time)) +
+  geom_smooth(method = "lm", se = TRUE) +
+  geom_point(size = 4) +
+  geom_hline(yintercept = 0, col = "black") +
+  theme_minimal() +
+  theme(axis.line.y = element_line(arrow = arrow(length = unit(2, "mm")))) +  
+  theme(axis.title.x = element_text(size=9,  color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  ylab("Delta GF Langs") +
+  xlab("Age when taking the test (month)") +
+  coord_cartesian(ylim=c(-7.5,2)) +
+  scale_color_manual(legend_title, values=c("#66CC00", "#006600","#003300"))
+
+ggsave(file = paste0("./img/", ANNEE_COHORTE, "/Graph_3C_Boys_First_Lang_wofirst_joined30_n_VF_", ANNEE_COHORTE, ".svg"), width = 7, height = 5)
+
+```
+
+### 3C lang Girls (22/06)
+
+```{r}
+Lang_T1 <- DATA_int_F[, c("Age_T1", "Sexe", "T1_Lang_Rank")] %>%
+  group_by(Age_T1, Sexe) %>%
+  mutate(Lang = mean(T1_Lang_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(Lang_T1)[1] <- "Age"
+Lang_T1 <- Lang_T1[!duplicated(Lang_T1[, c("Age", "Sexe", "Lang")]), c("Age", "Sexe", "Lang")]
+Lang_T1 <- Lang_T1[!is.na(Lang_T1$Age), ]
+Lang_T1 <- pivot_wider(Lang_T1, names_from = Sexe, values_from = Lang)
+Lang_T1$T1 <- Lang_T1$Boys - Lang_T1$Girls
+
+
+Lang_T2 <- DATA_int_F[, c("Age_T2", "Sexe", "T2_Lang_Rank")] %>%
+  group_by(Age_T2, Sexe) %>%
+  mutate(Lang = mean(T2_Lang_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(Lang_T2)[1] <- "Age"
+Lang_T2 <- Lang_T2[!duplicated(Lang_T2[, c("Age", "Sexe", "Lang")]), c("Age", "Sexe", "Lang")]
+Lang_T2 <- Lang_T2[!is.na(Lang_T2$Age), ]
+Lang_T2 <- pivot_wider(Lang_T2, names_from = Sexe, values_from = Lang)
+Lang_T2$T2 <- Lang_T2$Boys - Lang_T2$Girls
+
+Lang_T3 <- DATA_int_F[, c("Age_T3", "Sexe", "T3_Lang_Rank")] %>%
+  group_by(Age_T3, Sexe) %>%
+  mutate(Lang = mean(T3_Lang_Rank, na.rm = T)) %>%
+  ungroup()
+colnames(Lang_T3)[1] <- "Age"
+Lang_T3 <- Lang_T3[!duplicated(Lang_T3[, c("Age", "Sexe", "Lang")]), c("Age", "Sexe", "Lang")]
+Lang_T3 <- Lang_T3[!is.na(Lang_T3$Age), ]
+Lang_T3 <- pivot_wider(Lang_T3, names_from = Sexe, values_from = Lang)
+Lang_T3$T3 <- Lang_T3$Boys - Lang_T3$Girls
+
+Lang <- Lang_T1[, c(1, 4)] %>% 
+  full_join(Lang_T2[, c(1, 4)], by = "Age") %>%
+  full_join(Lang_T3[, c(1, 4)], by = "Age")
+
+Lang <- Lang %>% pivot_longer(cols = c(T1, T2, T3), names_to = "Time")
+rm(Lang_T1, Lang_T2, Lang_T3)
+
+legend_title <- "Time"
+ggplot(data = Lang, aes(x = Age, y = value*100, color = Time)) +
+  geom_smooth(method = "lm", se = TRUE) +
+  geom_point(size = 4) +
+  geom_hline(yintercept = 0, col = "black") +
+  theme_minimal() +
+  theme(axis.line.y = element_line(arrow = arrow(length = unit(2, "mm")))) +  
+  theme(axis.title.x = element_text(size=9,  color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  ylab("Delta GF Langs") +
+  xlab("Age when taking the test (month)") +
+  coord_cartesian(ylim=c(-7.5,2)) +
+  scale_color_manual(legend_title, values=c("#66CC00", "#006600","#003300")) 
+
+ggsave(file = paste0("./img/", ANNEE_COHORTE, "/Graph_3C_Girls_First_Lang_wofirst_joined30_n_VF_", ANNEE_COHORTE, ".svg"), width = 7, height = 5)
+```
+

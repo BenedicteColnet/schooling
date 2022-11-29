@@ -1,0 +1,304 @@
+---
+title: "10C_Graph_Finaux_2"
+author: "Pauline MARTINOT"
+date: "1/24/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+# Emergence of a highly reproducible gender gap in Math, Number Line and Pb solving in the first year of schooling
+
+### Library to set before launch of the pipeline
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE, include = TRUE)
+
+library(tidyverse)
+library(dplyr)
+library(rmarkdown)
+library(ggplot2)
+library(reshape2)
+library(alluvial)
+library(patchwork)
+library(ciTools)
+library(gmodels)
+
+```
+
+### Parameters to set before launch of the pipeline
+
+```{r}
+
+IMPUTED = "imputed" # "non-imputed"
+
+ANNEE_COHORTE = 2018 # 2018 #2020
+
+```
+
+### Data
+
+```{r}
+
+load(paste0("./data/cohort_", ANNEE_COHORTE, "_", IMPUTED, "_joined_n.RData"))
+load(paste0("./data/cohort_", ANNEE_COHORTE, "_", IMPUTED, "_joined30_n.RData"))
+
+SEUIL_INF_CLASS = 5
+
+```
+
+
+# Graph 2A : ANOVA
+
+### Math 10 categ
+
+```{r}
+
+joined_n %>% 
+  group_by(Categ_10c_CP, Sexe, Categ_Etab_CP) %>%
+  summarise(T3 = mean(T3_Math_Rank*100), T1 = mean(T1_Math_Rank*100), T2 = mean(T2_Math_Rank*100)) %>%
+  pivot_longer(cols =c("T1", "T2", "T3"), names_to = "Period", values_to = "Grade") %>%
+  ggplot(aes(x = Categ_10c_CP, y = Grade, group = interaction(Categ_Etab_CP, Sexe), color = Sexe)) +
+  geom_line() +
+  geom_point(size = 2) +
+  facet_wrap(~Period) +
+  theme_minimal() +
+  theme(axis.line.y = element_line(arrow = arrow(length = unit(2, "mm")))) + 
+  theme(axis.line.x = element_line(arrow = arrow(length = unit(2, "mm")))) + 
+  theme(axis.title.x = element_text(size=12,  color="black", angle=0, hjust = 1)) +
+  theme(axis.title.y = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  ylab("Average level in Math") +
+  xlab("10 social categories of schools") + 
+  coord_cartesian(ylim=c(29,62)) + 
+  geom_hline(yintercept = 0.5, alpha = 0.2) +
+  scale_color_manual(values=c("#000066", "#FF3333"))
+ggsave(paste0("./img/", ANNEE_COHORTE, "/cohort_", ANNEE_COHORTE, "_average_level_anova_math_10c.svg"), width = 9, height = 6)
+
+```
+
+### Language 10 categ
+
+```{r}
+
+joined_n %>% 
+  group_by(Categ_10c_CP, Sexe, Categ_Etab_CP) %>%
+  summarise(T3 = mean(T3_Lang_Rank*100), T1 = mean(T1_Lang_Rank*100), T2 = mean(T2_Lang_Rank*100)) %>%
+  pivot_longer(cols =c("T1", "T2", "T3"), names_to = "Period", values_to = "Grade") %>%
+  ggplot(aes(x = Categ_10c_CP, y = Grade, group = interaction(Categ_Etab_CP, Sexe), color = Sexe)) +
+  geom_line() +
+  geom_point(size = 2) +
+  facet_wrap(~Period) +
+  theme_minimal() +
+  theme(axis.line.y = element_line(arrow = arrow(length = unit(2, "mm")))) + 
+  theme(axis.title.x = element_text(size=12,  color="black", angle=0, hjust = 1)) +
+  theme(axis.title.y = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  ylab("Average level in Language") +
+  xlab("10 social categories of schools") + 
+  coord_cartesian(ylim=c(25,65)) + 
+  geom_hline(yintercept = 0.5, alpha = 0.2) +
+  scale_color_manual(values=c("#000066", "#FF3333"))
+ggsave(paste0("./img/", ANNEE_COHORTE, "/cohort_", ANNEE_COHORTE, "_average_level_anova_LANG_10c.svg"), width = 9, height = 6)
+
+```
+
+### Problem solving 10 categ
+
+```{r}
+
+joined_n %>% 
+  group_by(Categ_10c_CP, Sexe, Categ_Etab_CP) %>%
+  summarise(T3 = mean(T3_Resoud_Pb_P_Rank*100), T1 = mean(T1_Resoud_Pb_P_Rank*100), T2 = mean(T2_Resoud_Pb_P_Rank*100)) %>%
+  pivot_longer(cols =c("T1", "T2", "T3"), names_to = "Period", values_to = "Grade") %>%
+  ggplot(aes(x = Categ_10c_CP, y = Grade, group = interaction(Categ_Etab_CP, Sexe), color = Sexe)) +
+  geom_line() +
+  geom_point(size = 2) +
+  facet_wrap(~Period) +
+  theme_minimal() +
+  theme(axis.line.y = element_line(arrow = arrow(length = unit(2, "mm")))) + 
+  theme(axis.line.x = element_line(arrow = arrow(length = unit(2, "mm")))) +
+  theme(axis.title.x = element_text(size=12,  color="black", angle=0, hjust = 1)) +
+  theme(axis.title.y = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  ylab("Average level in Problem solving") +
+  xlab("10 social categories of schools") + 
+  coord_cartesian(ylim=c(32,62)) + 
+  geom_hline(yintercept = 0.5, alpha = 0.2) +
+  scale_color_manual(values=c("#000066", "#FF3333"))
+ggsave(paste0("./img/", ANNEE_COHORTE, "/cohort_", ANNEE_COHORTE, "_average_level_anova_Resoud_Pb_P_10c.svg"), width = 9, height = 6)
+
+```
+
+### Number line 10 categ
+
+
+```{r}
+
+joined_n %>% 
+  group_by(Categ_10c_CP, Sexe, Categ_Etab_CP) %>%
+  summarise(T3 = mean(T3_Ligne_Num_P_Rank*100), T1 = mean(T1_Ligne_Num_P_Rank*100), T2 = mean(T2_Ligne_Num_P_Rank*100)) %>%
+  pivot_longer(cols =c("T1", "T2", "T3"), names_to = "Period", values_to = "Grade") %>%
+  ggplot(aes(x = Categ_10c_CP, y = Grade, group = interaction(Categ_Etab_CP, Sexe), color = Sexe)) +
+  geom_line() +
+  geom_point(size = 2) +
+  facet_wrap(~Period) +
+  theme_minimal() +
+  theme(axis.line.y = element_line(arrow = arrow(length = unit(2, "mm")))) + 
+  theme(axis.line.x = element_line(arrow = arrow(length = unit(2, "mm")))) +
+  theme(axis.title.x = element_text(size=12,  color="black", angle=0, hjust = 1)) +
+  theme(axis.title.y = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=12, color="black", angle=0, hjust = 1)) +
+  ylab("Average level in Number line") +
+  xlab("10 social categories of schools") + 
+  coord_cartesian(ylim=c(32,62)) + 
+  geom_hline(yintercept = 0.5, alpha = 0.2) +
+  scale_color_manual(values=c("#000066", "#FF3333"))
+ggsave(paste0("./img/", ANNEE_COHORTE, "/cohort_", ANNEE_COHORTE, "_average_level_anova_Ligne_Num_10c.svg"), width = 9, height = 6)
+
+```
+
+
+
+# Graph 2B : Density per class Math GG : Evolution of the gender gap distribution between T1, T2 and T3 per class
+
+### Density per class
+
+```{r}
+
+data_for_plot <- joined_n[, c("Categ_Etab_CP", "D_T3_Math_Rank", "D_T2_Math_Rank", "D_T1_Math_Rank", "Sexe")]
+data_for_plot <- pivot_longer(data_for_plot, cols = c("D_T1_Math_Rank", "D_T2_Math_Rank", "D_T3_Math_Rank"), names_to = "Period", values_to = "Grade")
+
+data_for_plot$Period <- substr(data_for_plot$Period , 3, 4)
+
+ggplot(data_for_plot, aes(x = Grade*100, fill = Period, group = Period)) +
+  geom_density(alpha = 0.5) +
+  scale_fill_manual (values = c("#CC6633", "#993333", "#FF3333"),
+                     labels = c( "T1", "T2", "T3")) +
+  geom_vline(xintercept = 0, col = "black") +
+  coord_cartesian(xlim=c(-50,50)) +
+  theme_minimal() +
+  xlab("Gender gap in math (Percentile rank)") +
+  theme(axis.line = element_line(arrow = arrow(length = unit(2, "mm")))) + 
+  theme(axis.title.x = element_text(size=9,  color="black", angle=0, hjust = 1)) +
+  theme(axis.title.y = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=8, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=8, color="black", angle=0, hjust = 1))
+  
+
+ggsave(file = paste0("./img/", ANNEE_COHORTE, "/Graph_2B_Density_D_Math_", ANNEE_COHORTE, ".svg"),
+       width = 9, height = 5)
+
+# Statistics
+
+nrow(joined_n[(joined_n$D_T1_Math_Rank > 0), ]) / nrow(joined_n)
+nrow(joined_n[(joined_n$D_T2_Math_Rank > 0), ]) / nrow(joined_n)
+nrow(joined_n[(joined_n$D_T3_Math_Rank > 0), ]) / nrow(joined_n)
+
+rm(data_for_plot)
+
+```
+
+
+# Graph 2C : Distribution of gender gap in Math ranks at T1 T2 T3
+
+### Distrib Math
+
+```{r echo=TRUE}
+
+data_for_plot <- joined_n[, c("T3_Math_Rank", "T2_Math_Rank", "T1_Math_Rank", "Sexe")]
+
+data_for_plot <- pivot_longer(data_for_plot, cols = c("T1_Math_Rank", "T2_Math_Rank", "T3_Math_Rank"), names_to = "Period", values_to = "Grade")
+data_for_plot$Period <- substr(data_for_plot$Period , 1, 2)
+
+
+ggplot(data_for_plot, aes(x = Grade*100, fill = Sexe, group = Sexe)) +
+  facet_wrap(~ Period, ncol = 3) +
+  geom_histogram(position = "identity", alpha = 0.6,
+                 binwidth = 2.5 ,
+                 breaks=seq(0, 100, by = 4)) +
+  scale_fill_manual (values = c("#000066", "#FF3333"), labels = c( "Boys", "Girls")) +
+  xlab("Math level (Percentile rank)") +
+  theme_minimal() +
+  theme(axis.line = element_line(arrow = arrow(length = unit(2, "mm")))) + 
+  theme(axis.title.x = element_text(size=9,  color="black", angle=0, hjust = 1)) +
+  theme(axis.title.y = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=9, color="black", angle=0, hjust = 1))
+  
+
+
+ggsave(file = paste0("./img/", ANNEE_COHORTE, "/Graph_2C_distribution_math_", ANNEE_COHORTE, ".svg"), width = 9, height = 3)
+
+rm(data_for_plot)
+
+```
+
+
+# Graph 2D : Distribution according to Deciles of level
+
+### Math decile level 
+
+```{r}
+
+DATA_C <- joined_n[!is.na(joined_n$heterogeneity_T1_Math_Rank), c("T1_Math_Rank", "T2_Math_Rank", "T3_Math_Rank", "heterogeneity_T1_Math_Rank", "Sexe")]
+
+data_for_plot     <- pivot_longer(DATA_C, cols = c("T1_Math_Rank", "T2_Math_Rank", "T3_Math_Rank"),
+                                     names_to = "Period", values_to = "Rank")
+
+data_for_plot$Period <- substr(data_for_plot$Period , 1, 2)
+
+data_for_plot$Rank   <- round(floor(10*data_for_plot$Rank),0) + 1  # 10 x le rang   0.21 => 2.1 = Floor (prend le seuil bas) => 2 = + 1 pour le mettre dans le bon décile. # si le rang est 0.1 => c'est compté dans le décile du dessus. 
+# pour chaque éleve, on a mis le rang moyen. Plus il y a d'éleves qui ont le meme rang moyen que lui, plus leur rang moyen baisse. Donc quand on fait les déciles avec les rangs moyens, ca baisse artificiellement. 
+
+# Donc 1 c'est le plus mauvais et 10 c'est le meilleur +++
+
+data_for_plot$Rank   <- as.factor(data_for_plot$Rank)
+
+# data_for_plot$Rank   <- factor(data_for_plot$Rank, levels = rev(levels(data_for_plot$Rank))) # to reverse the order
+
+ggplot(data_for_plot, aes(x = Rank, fill = Sexe)) +
+  geom_bar(position=position_dodge()) + 
+  scale_fill_manual(values=c("#000066", "#FF3333")) +
+  theme_minimal() +
+  facet_wrap(~Period)
+
+ggsave(file = paste0("./img/", ANNEE_COHORTE, "/Graph_2E_Decile_MathRank_", ANNEE_COHORTE, ".svg"), width = 9, height = 5)
+
+rm(data_for_plot, DATA_C)
+```
+
+### Language decile of level
+
+```{r}
+DATA_C <- joined_n[!is.na(joined_n$heterogeneity_T1_Lang_Rank), c("T1_Lang_Rank", "T2_Lang_Rank", "T3_Lang_Rank", "heterogeneity_T1_Lang_Rank", "Sexe")]
+
+data_for_plot     <- pivot_longer(DATA_C, cols = c("T1_Lang_Rank", "T2_Lang_Rank", "T3_Lang_Rank"),
+                                     names_to = "Period", values_to = "Rank")
+
+data_for_plot$Period <- substr(data_for_plot$Period , 1, 2)
+
+data_for_plot$Rank   <- round(floor(10*data_for_plot$Rank),0) + 1  # 10 x le rang   0.21 => 2.1 = Floor (prend le seuil bas) => 2 = + 1 pour le mettre dans le bon décile. # si le rang est 0.1 => c'est compté dans le décile du dessus. 
+# pour chaque éleve, on a mis le rang moyen. Plus il y a d'éleves qui ont le meme rang moyen que lui, plus leur rang moyen baisse. Donc quand on fait les déciles avec les rangs moyens, ca baisse artificiellement. 
+
+# Donc 1 c'est le plus mauvais et 10 c'est le meilleur +++
+
+data_for_plot$Rank   <- as.factor(data_for_plot$Rank)
+
+# data_for_plot$Rank   <- factor(data_for_plot$Rank, levels = rev(levels(data_for_plot$Rank))) # to reverse the order
+
+ggplot(data_for_plot, aes(x = Rank, fill = Sexe)) +
+  geom_bar(position=position_dodge()) + 
+  scale_fill_manual(values=c("#000066", "#FF3333")) +
+  theme_minimal() +
+  facet_wrap(~Period)
+
+ggsave(file = paste0("./img/", ANNEE_COHORTE, "/Graph_2E_Decile_LangRank_", ANNEE_COHORTE, ".svg"), width = 9, height = 5)
+
+rm(data_for_plot, DATA_C)
+```

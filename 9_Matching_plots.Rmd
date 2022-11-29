@@ -1,0 +1,205 @@
+---
+title: "Data Management of DEPP cohort Evalaide - Matching"
+author:
+  - Pauline Martinot [UNICOG, NeuroSpin]
+  - Bénédicte Colnet [Inria, Paris-Saclay]
+date: "July 2021"
+output:
+  html_document:
+    number_sections: no
+    toc: yes
+    toc_depth: 2
+  pdf_document:
+    toc: yes
+abstract: | 
+  This notebook concerns data from National assessment in 1st and 2nd grade in France : Matching. Reads the output of `13_Matching_script.R`.
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Seed because random sampling and matching
+set.seed(123)
+
+# Parameters to set before launch of the pipeline
+IMPUTED = "imputed" # "imputed" "non-imputed"
+ANNEE_COHORTE = "2018" 
+SCENARIO = 1
+ESTIMAND = "ATT" # effect of being a girl
+
+# Libraries
+library(MatchIt)
+library(tidyverse)
+library(ggplot2)
+library(tidyr) # pivot
+library(tableone)
+library(dplyr)
+library(purrr) # set_names
+library(gmodels) # confidence intervals for summarise
+
+library(data.table)
+```
+
+```{r}
+load(paste0("./results/output_13_Matching_", IMPUTED, "_", ANNEE_COHORTE, "_SCENARIO_", SCENARIO, "_", ESTIMAND, ".RData"))
+load(paste0("./data/cohort_", ANNEE_COHORTE, "_", IMPUTED, "_after_2_composite_covariate.RData"))
+```
+
+```{r}
+# Extract the data
+results <- match.data(matched.data)
+head(results)
+```
+
+```{r}
+covariates_used_for_matching <- c(Math_T1_P, "T1_Language", "Categ_Etab_CP", "IPS_Etab_CP", "Age_CP", "ID_Classe_CP")
+covariates_used_for_matching_grades  <- c(Math_T1_P, "T1_Language")
+
+data.for.plot <- results[, c(covariates_used_for_matching, "Sexe")]
+data.for.plot$Matching <- rep("After", nrow(data.for.plot))
+temp <- data.to.match[, c(covariates_used_for_matching, "Sexe")]
+temp$Matching <- rep("Before", nrow(temp))
+
+data.for.plot <- rbind(data.for.plot, temp)
+data.for.plot$Gender <- ifelse(data.for.plot$Sexe == 1, "Girl", "Boy")
+results$Gender <- ifelse(results$Sexe == 1, "Girl", "Boy")
+
+covariates_used_for_matching_grades_better_names <- c("Math - Number writing", "Math - Knowledge of Arabic numerals", "Math - Problem solving", "Math - Enumerating", "Math - Number comparison", "Math - Placing a number on a number line", "Lang - Language skills (mean)")
+setnames(data.for.plot, old = covariates_used_for_matching_grades, new = covariates_used_for_matching_grades_better_names) 
+```
+
+Assessing the efficacy of the matching
+
+```{r}
+data.for.plot %>%
+  group_by(Matching, Gender) %>%
+  summarise_at(covariates_used_for_matching_grades_better_names, mean, na.rm = TRUE) %>%
+  pivot_longer(cols = covariates_used_for_matching_grades_better_names, names_to = "Variable", values_to = "Mean") %>%
+  pivot_wider(names_from = "Gender", values_from = "Mean") %>%
+  mutate(Mean.difference = Girl - Boy) %>%
+  ggplot(aes(x = Mean.difference, y = Variable, color = Matching)) +
+  geom_point(size = 6) +
+  theme_bw() +
+  xlim(-3.5, 3.5) +
+  scale_color_manual(values = c("#E69F00", "#999999")) +
+  geom_vline(xintercept = 0, linetype = "dashed", alpha = 0.7, size = 1) +
+  xlab("Gender \n difference at T1") +
+  ylab("") +
+  theme(legend.position = "none", text = element_text(size = 20, face = "bold"))
+  ggsave(paste0("./fig/scenario ", SCENARIO, "/",  "efficacy-of-matching.png"), width = 10, height = 6)
+```
+
+```{r}
+data.for.plot %>%
+  group_by(Matching) %>%
+  summarise_at(covariates_used_for_matching_grades_better_names, mean, na.rm = TRUE) %>%
+  pivot_longer(cols = covariates_used_for_matching_grades_better_names, names_to = "Variable", values_to = "Mean") %>%
+  ggplot(aes(x = Mean, y = Variable, color = Matching)) +
+  geom_point(size = 5) +
+  theme_bw() +
+  xlab("Mean difference") +
+  ylab("") +
+  scale_color_manual(values = c("#E69F00", "#999999")) +
+  theme(legend.position = "right", text = element_text(size = 15, face = "bold"))
+  ggsave(paste0("./fig/scenario ", SCENARIO, "/",  "bias-due-to-poor-overlap.png"), width = 10, height = 6)
+```
+
+
+
+```{r}
+id.matched <- results$ID_Eleve
+```
+
+
+```{r}
+data.to.match$Type <- case_when(data.to.match$Sexe == "Girls" & data.to.match$ID_Eleve %in% id.matched ~ "Matched Girls",
+                            data.to.match$Sexe == "Boys" & data.to.match$ID_Eleve %in% id.matched ~ "Matched Boys",
+                            data.to.match$Sexe == "Girls" & !data.to.match$ID_Eleve %in% id.matched ~ "Unmatched Girls",
+                            data.to.match$Sexe == "Boys" & !data.to.match$ID_Eleve %in% id.matched  ~ "Unmatched Boys")
+```
+
+```{r}
+only.matched.children <- data.to.match[data.to.match$ID_Eleve %in% id.matched,]
+only.matched.children$Matched <- rep("Matched", nrow(only.matched.children))
+data.to.match$Matched <- rep("Original cohort", nrow(data.to.match))
+result.for.plot <- rbind(only.matched.children, data.to.match)
+
+
+result.for.plot$Gender   <- ifelse(result.for.plot$Sexe == 1, "Girl", "Boy")
+```
+
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE }
+result.for.plot.bis <- result.for.plot %>%
+  pivot_longer(cols = c("T1_Math_Rank","T2_Math_Rank", "T3_Math_Rank"), names_to = "Test", values_to = "Rank")  %>%
+  group_by(Gender, Test, Matched) %>%
+  summarise(mean = ci(Rank)[1], 
+            lowCI = ci(Rank)[2],
+            hiCI = ci(Rank)[3],
+            sd = sd(Rank))
+
+result.for.plot.bis$Test <- substr(result.for.plot.bis$Test, 1, 2)
+```
+
+
+```{r}
+ggplot(result.for.plot.bis, aes(x = Test, y =100* mean, color = Gender, linetype = Matched, group = interaction(Matched,Gender))) +
+  geom_point(size = 5) +
+  geom_line(size = 2) +
+  geom_errorbar(aes(ymin=100*lowCI, ymax=100*hiCI), width=.05, size = 2) +
+  theme_minimal() +
+  xlab("") +
+  ylab("Percentile ranks") +
+  scale_color_manual(values = c("#000066", "#FF3333","#000066", "#FF3333"), labels = c("Boys (matched)", "Girls")) +
+  theme(legend.position = "none",
+        axis.title.x = element_text(color="black", size= 20, face = "bold"),
+        axis.title.y = element_text(color="black", size=20 , face = "bold"),
+        legend.text = element_text(size = 9, face = "bold"),
+        legend.title = element_text(size = 11, face = "bold"), 
+        text = element_text(size = 20, face = "bold")) +
+  ylim(40, 90)
+  ggsave(paste0("./fig/scenario ", SCENARIO, "/",  "evolution.png"), width = 4, height = 5)
+```
+
+
+```{r}
+plot.proportions <- result.for.plot %>%
+  pivot_longer(cols = c("T1_Math_Rank","T2_Math_Rank", "T3_Math_Rank"), names_to = "Test", values_to = "Rank")  %>%
+  mutate(Rank = as.integer(round(10*Rank, 0))) %>%
+  group_by(Gender, Test, Matched, Rank) %>%
+  summarise(count = n())
+```
+
+
+```{r}
+ggplot(plot.proportions, aes(x = as.factor(Rank), fill = Gender, y = count)) +
+  geom_bar(position="fill", stat="identity") +
+  facet_grid(Test ~ Matched) +
+  scale_fill_manual(values = c("#000066", "#FF3333","#000066", "#FF3333"), labels = c("Boys", "Girls")) +
+  theme_bw() +
+  ylab("Proportion") +
+  geom_hline(yintercept = 0.5, size = 1.2, color = "white", linetype = "dashed") +
+  xlab("Decile")
+  ggsave(paste0("./fig/scenario ", SCENARIO, "/",  "evolution-per-decile.png"), width = 10, height = 6)
+```
+
+Analysis to report with confidence intervals
+
+```{r}
+library("lmtest") #coeftest  
+library("sandwich") #vcovCL - intervalles de confiance
+library("zoo")
+
+fit <- lm(T3_Math_Rank ~ Gender + Categ_Etab_CP + IPS_Etab_CP + Age_CP + T1_Language + T1_Ecri_Nombre_P + T1_Lire_Nombre_P + T1_Resoud_Pb_P + T1_Denombrer_P + T1_Compa_Nombre_P + T1_Ligne_Num_P, data = results, weights = weights)
+
+
+
+coeftest(fit, vcov. = vcovCL, cluster = ~subclass)
+```
+
+Number of pairs
+
+```{r}
+length(unique(results$subclass))
+```
+

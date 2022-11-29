@@ -1,0 +1,860 @@
+---
+title: "Data Management of DEPP cohort Evalaide - Create classes"
+author:
+  - Pauline Martinot [UNICOG, NeuroSpin]
+  - Bénédicte Colnet [Inria, Paris-Saclay]
+date: "July 2021"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    number_sections: no
+    toc: yes
+    toc_depth: 2
+abstract: | 
+  This notebook takes as an entry the output from notebook 2_ and create classes data frame with only class-related covariates.
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# Seed because application of PCA on a random sample
+set.seed(123)
+# Parameters to set before launch of the pipeline
+IMPUTED = "imputed" # "imputed" "non-imputed"
+NAOMIT = "True" # "False"
+ANNEE_COHORTE = "2020" #"2018" #"2020"
+
+# Libraries
+library(dplyr)
+library(tidyverse)
+library(tibble)
+library(reshape2)
+
+
+```
+
+# Load data
+
+```{r echo=TRUE}
+# Data
+
+if(IMPUTED == "non-imputed"){
+  if(NAOMIT == "True"){
+load(paste0("./data/cohort_", ANNEE_COHORTE, "_", IMPUTED, "_after_2_composite_covariate_naomit_True.RData"))
+  } else if (NAOMIT == "False"){
+load(paste0("./data/cohort_", ANNEE_COHORTE, "_", IMPUTED, "_after_2_composite_covariate_naomit_False.RData"))
+    }
+}
+
+if(IMPUTED == "imputed"){
+load(paste0("./data/cohort_", ANNEE_COHORTE, "_", IMPUTED, "_after_2_composite_covariate.RData"))
+} 
+
+```
+
+# SELECT only classes big enough > SEUIL_INF_CLASS and not too big < SEUIL_SUP_CLASS
+
+```{r}
+
+SEUIL_INF_CLASS = 5
+
+dim(data_depp)
+
+data_depp <- data_depp[data_depp$Taille_Classe < SEUIL_SUP_CLASS & data_depp$Taille_Classe > SEUIL_INF_CLASS,]
+
+dim(data_depp)
+```
+
+
+## Intermediate classes table
+
+```{r}
+# Extract all classes ID
+all_classes_ids <- unique(data_depp$ID_etab_class)
+
+# Instantiate
+classes <- data_depp[, c("ID_etab_class", "Categ_Etab_CP", "Taille_Classe", "Taille_Classe_Cat", "Taille_Ecole", "IPS_Etab_CP")] %>%
+  group_by(ID_etab_class, Categ_Etab_CP, Taille_Classe, Taille_Classe_Cat, Taille_Ecole)
+classes <- unique(classes)
+# Sanity check
+nrow(classes) ==  length(all_classes_ids)
+```
+
+
+```{r}
+dim(classes)
+```
+
+# SELECT a minimum of 2 children of each sexe per class
+
+```{r}
+
+# building a variable for number of boys per class
+
+nmixity <- data_depp[, c("ID_etab_class", "Sexe_Num")]
+nmixity$Sexe_Num <- ifelse(nmixity$Sexe_Num == -0.5, 0, 1)
+nmixity <- nmixity %>%
+  group_by(ID_etab_class) %>%
+  summarise(n_boy = sum(Sexe_Num))
+
+classes <- merge(classes, nmixity[ , c("ID_etab_class", "n_boy")], by = "ID_etab_class")
+
+# building a variable for number of girls per class
+
+nmixity <- data_depp[, c("ID_etab_class", "Sexe_Num")]
+nmixity$Sexe_Num <- ifelse(nmixity$Sexe_Num == -0.5, 0, 1)
+nmixity <- nmixity %>%
+  group_by(ID_etab_class) %>%
+  summarise(n_girls = sum(Sexe_Num == 0))
+
+classes <- merge(classes, nmixity[ , c("ID_etab_class", "n_girls")], by = "ID_etab_class")
+
+rm(nmixity)
+
+# selection of min 2 boys and mean 2 girls per class
+classes$n_boy   <- as.numeric(classes$n_boy)
+classes$n_girls <- as.numeric(classes$n_girls)
+
+classes <- classes[classes$n_boy > 1 & classes$n_girls > 1, ]
+
+```
+
+```{r}
+ggplot(classes, aes(x = n_boy)) +
+  geom_histogram() +
+  theme_bw()
+
+
+ggplot(classes, aes(x = n_girls)) +
+  geom_histogram() +
+  theme_bw()
+
+```
+
+# Mixity : Create variable for class mixity
+
+```{r}
+# compute mixity
+mixity <- data_depp[, c("ID_etab_class", "Sexe_Num")]
+mixity$Sexe_Num <- ifelse(mixity$Sexe_Num == -0.5, 0, 1)
+mixity <- mixity %>%
+  group_by(ID_etab_class) %>%
+  summarise(boy_proportion = sum(Sexe_Num)/n())
+
+# merge mixity with classes
+classes <- merge(classes, mixity [ , c("ID_etab_class", "boy_proportion")], by = "ID_etab_class")
+classes$boy_proportion <- round(classes$boy_proportion,2)
+
+# clean memory
+rm(mixity)
+
+# check number of new dimension
+dim(classes)
+
+# plot
+
+ggplot(classes, aes(x = boy_proportion)) +
+  geom_histogram() +
+  theme_bw()
+```
+
+## Select only classes with minimum of 30% of boys and 30% of girls 
+
+```{r}
+# colnames(classes)
+# summary(classes$Taille_Classe) # min 6 max 27
+# 
+# summary(classes$boy_proportion)
+# classes_1 <- classes [ (classes$boy_proportion >= 0.30) & (classes$boy_proportion <= 0.70) , ]
+# 
+# ggplot(classes_1, aes(x = boy_proportion)) +
+#   geom_histogram() +
+#   theme_bw()
+
+```
+
+
+
+# Mean per class = Create average values for all grades and rank per class = "_mean_per_class"
+
+Create this for the 44 tests, the 44 tests in percentage, the 44 tests in rank, the 6 synthetic covariates_P, and also the 6 covariates in rank. This ends with 144 additional columns.
+
+```{r}
+  
+grades_to_average <- c("Age_CP", notes, notes_P, notes_Rank,
+                       "T1_Math", "T2_Math", "T3_Math",
+                       "T1_Language", "T2_Language", "T3_Language",
+                       "T1_Math_Rank", "T2_Math_Rank", "T3_Math_Rank",
+                       "T1_Lang_Rank", "T2_Lang_Rank", "T3_Lang_Rank")
+
+reversed_table <- melt(data_depp[, c(grades_to_average,"ID_etab_class")], id = c("ID_etab_class"))
+
+
+average <- dcast(reversed_table, ID_etab_class ~ variable, mean)
+
+classes <- merge(average, classes, by = "ID_etab_class")
+
+rm(reversed_table)
+
+# check dimension
+dim(classes)
+
+# rename
+names(classes)[names(classes) %in% grades_to_average] <- paste0(grades_to_average, "_mean_per_class")
+
+# clean workspace
+rm(average)
+rm(grades_to_average)
+
+colnames(classes)
+
+
+
+```
+
+
+```{r}
+# # sanity checks for 2019
+mean(data_depp[data_depp$ID_etab_class == "001839365f87e7ab_27c4180baadb", "T1_Math"]) == classes[classes$ID_etab_class == "001839365f87e7ab_27c4180baadb", "T1_Math_mean_per_class"]
+
+# # sanity checks for 2018
+mean(data_depp[data_depp$ID_etab_class == "0000993518d99f92_2114bfa81bad", "T1_Math"]) == classes[classes$ID_etab_class == "0000993518d99f92_2114bfa81bad", "T1_Math_mean_per_class"]
+```
+
+
+# Heterogeneity : Create variable of level heterogeneity per class
+
+## Absolute heterogeneity
+
+Create this only for the 6 synthetic variables.
+
+We define heterogeneity variables as Level standard deviation (sd) in language and mathematics within the class.
+
+```{r}
+
+  
+# compute sd for each of the 6 synthetic covariates
+
+reversed_table <- melt(data_depp[, c("T1_Math", "T2_Math", "T3_Math",
+                                     "T1_Language", "T2_Language", "T3_Language",
+                                     "ID_etab_class")], id = c("ID_etab_class"))
+
+heterogeneities <- dcast(reversed_table, ID_etab_class ~ variable, sd)
+
+names(heterogeneities) <- c("ID_etab_class", paste0("heterogeneity_", c("T1_Math", "T2_Math", "T3_Math",
+                                     "T1_Language", "T2_Language", "T3_Language")))
+
+# merge heterogeneities and main classes table
+
+classes <- merge(classes, heterogeneities [ , c("ID_etab_class", "heterogeneity_T1_Math", "heterogeneity_T2_Math",
+                                                "heterogeneity_T3_Math", "heterogeneity_T1_Language",
+                                                "heterogeneity_T2_Language", "heterogeneity_T3_Language")],
+                 by = "ID_etab_class")
+
+# clean memory
+rm(reversed_table)
+rm(heterogeneities)
+
+# check number of new dimension
+dim(classes)
+
+
+
+```
+
+```{r}
+# # sanity checks for 2019
+sd(data_depp[data_depp$ID_etab_class == "001839365f87e7ab_27c4180baadb", "T1_Math"]) == classes[classes$ID_etab_class == "001839365f87e7ab_27c4180baadb", "heterogeneity_T1_Math"]
+```
+
+
+## Heterogeneity among percent_rank
+
+The heterogeneity is also computed with respect to the rank only for the 6 synthetic variables.
+
+```{r}
+
+
+  
+# compute sd for each of the 6 ranks
+reversed_table <- melt(data_depp[, c("T1_Math_Rank", "T2_Math_Rank", "T3_Math_Rank",
+                                     "T1_Lang_Rank", "T2_Lang_Rank", "T3_Lang_Rank",
+                                     "ID_etab_class")], id = c("ID_etab_class"))
+
+heterogeneities_rank <- dcast(reversed_table, ID_etab_class ~ variable, sd)
+names(heterogeneities_rank) <- c("ID_etab_class", paste0("heterogeneity_",
+                                                        c("T1_Math_Rank", "T2_Math_Rank", "T3_Math_Rank",
+                                     "T1_Lang_Rank", "T2_Lang_Rank", "T3_Lang_Rank")))
+
+# merge heterogeneities and main classes table
+classes <- merge(classes, heterogeneities_rank [ , c("ID_etab_class", "heterogeneity_T1_Math_Rank",
+                                                     "heterogeneity_T2_Math_Rank", "heterogeneity_T3_Math_Rank",
+                                                     "heterogeneity_T1_Lang_Rank", "heterogeneity_T2_Lang_Rank",
+                                                     "heterogeneity_T3_Lang_Rank")], by = "ID_etab_class")
+
+# clean memory
+rm(reversed_table)
+rm(heterogeneities_rank)
+
+# check number of new dimension
+dim(classes)
+
+```
+
+
+```{r}
+# # sanity checks - valid only for cohort 2019
+# 
+# # Very low grades are observed but this is due to small classes
+# 
+# # for example
+# data_depp[data_depp$ID_etab_class == "d63a74ea5d7b2e1a_24160a91eee6",  c("T1_Math", "ID_etab_class", "Sexe_Num")]
+# data_depp[data_depp$ID_etab_class == "f65bad0d4885e4bb_6d341246d6b1",  c("T1_Math", "ID_etab_class", "Sexe_Num")]
+# 
+# # isolate classes with low maximum grade
+# strange_classes <- math[math$T1_Math_max < 20 , "ID_etab_class"]
+# 
+# print(data_depp[data_depp$ID_etab_class %in% strange_classes[[1]], "Taille_Classe"])
+# 
+# 
+# # then verify that the count is the good one
+# 
+# ## classe with only girls with good grades
+# data_depp[data_depp$ID_etab_class == "c6a29cdabc8ba94e_26b57cc506df", c("T1_Math", "ID_etab_class", "Sexe_Num", "Categ_Etab_CP")]
+# 
+# # best grade is 91 
+# data_depp[data_depp$ID_etab_class == "044c2ba610bfa229_14ca19c11169", c("T1_Math", "ID_etab_class", "Sexe_Num", "Categ_Etab_CP")]
+# 
+# # best grade is 78 and 3 boys are the first
+# data_depp[data_depp$ID_etab_class == "7e371c131a5c4565_c6abcd81af75", c("T1_Math", "ID_etab_class", "Sexe_Num", "Categ_Etab_CP")]
+```
+
+
+# First of class : if the top first child(ren) in math of a class is/are boy(s) or girl(s) : Create a variable to indicate this 
+
+For example in cohort 2018, class id "000dac02c20c7437_c6f54135e39e" as two girls being first with grade 87 in T1_Math, this will be indicated with -1 in the column "sum_Sexe_num_first_T1_Math" in the data frame classes.
+
+Decision to change sum by mean of first of class => mean() instead of sum() = "First_mean_sexe_in_"
+
+```{r}
+
+synthetic_grades <- c("T1_Math", "T2_Math", "T3_Math",
+                      "T1_Language", "T2_Language", "T3_Language")
+
+for (grade in synthetic_grades){
+  
+  # create sum of gender of the top children per class and store in temp
+  temp <- data_depp[, c("ID_etab_class", "Sexe_Num", grade)] %>%
+    # mutate_at(all_of(grade) , funs(round(., 0))) %>% 
+    group_by(ID_etab_class) %>%
+    top_n(1, !!as.name(grade)) %>%
+    #mutate(count_first_T1_Math = n()) %>% # if wanna count number of first ex-aequo children per class
+    group_by(!!as.name(grade), ID_etab_class) %>%
+    mutate(mean = mean(Sexe_Num))
+  
+  # kepp only relevant columns and name it accordingly
+  temp <- unique(temp[, c("mean", "ID_etab_class")])
+  names(temp)[names(temp) == "mean"] <- paste0("First_mean_sexe_in_", grade)
+  
+  # create column
+  classes <- merge(classes, temp, by = "ID_etab_class")
+}
+
+# clean memory
+rm(temp)
+
+# check number of dimensions
+dim(classes)
+
+
+ 
+  
+```
+
+
+```{r}
+
+
+
+synthetic_grades <- c("T1_Math_Rank", "T2_Math_Rank", "T3_Math_Rank", 
+                      "T1_Lang_Rank", "T2_Lang_Rank", "T3_Lang_Rank")
+
+for (grade in synthetic_grades){
+  
+  # create sum of gender of the top children per class and store in temp
+  temp <- data_depp[, c("ID_etab_class", "Sexe_Num", grade)] %>%
+    # mutate_at(all_of(grade), funs(round(., 0))) %>%
+    group_by(ID_etab_class) %>%
+    top_n(1, !!as.name(grade)) %>%
+    #mutate(count_first_T1_Math = n()) %>% # if wanna count number of first ex-aequo children per class
+    group_by(!!as.name(grade), ID_etab_class) %>%
+    mutate(mean = mean(Sexe_Num))
+  
+  # kepp only relevant columns and name it accordingly
+  temp <- unique(temp[, c("mean", "ID_etab_class")])
+  names(temp)[names(temp) == "mean"] <- paste0("First_mean_sexe_in_", grade)
+  
+  # create column
+  classes <- merge(classes, temp, by = "ID_etab_class")
+}
+
+# clean memory
+rm(temp)
+
+# check number of dimensions
+dim(classes)
+
+
+
+```
+
+### Improving First mean sexe in math and language : 14/02/2022
+
+```{r}
+# First Math
+
+table(classes$First_mean_sexe_in_T1_Math)
+
+classes$First_sexe_in_T1_Math <- case_when(classes$First_mean_sexe_in_T1_Math > 0 ~ 0.5,
+                                       classes$First_mean_sexe_in_T1_Math < 0 ~ -0.5,
+                                       classes$First_mean_sexe_in_T1_Math ==  0 ~ 0)
+
+summary(classes$First_sexe_in_T1_Math)
+
+# First Language 
+
+table(classes$First_mean_sexe_in_T1_Language)
+
+classes$First_sexe_in_T1_Language <- case_when(classes$First_mean_sexe_in_T1_Language > 0 ~ 0.5,
+                                       classes$First_mean_sexe_in_T1_Language < 0 ~ -0.5,
+                                       classes$First_mean_sexe_in_T1_Language ==  0 ~ 0)
+
+summary(classes$First_sexe_in_T1_Language)
+
+```
+
+
+# Create mean of a class for girls and boys per class.
+
+This adds 2 gender times 6 synthetic grades columns in percent and 6 synthetic columns in ranks.
+
+```{r}
+
+synthetic_grades <- c("Age_CP", "T1_Math", "T2_Math", "T3_Math",
+                      "T1_Language", "T2_Language", "T3_Language")
+
+for (grade in synthetic_grades){
+  for (gender in c("Boys", "Girls")){
+    temp <- data_depp[data_depp$Sexe == gender, c("ID_etab_class", grade)] %>%
+      group_by(ID_etab_class) %>%
+      summarise(mean = mean(!!as.name(grade)))
+
+  # Name it accordingly
+  names(temp)[names(temp) == "mean"] <- paste0("mean_", grade, "_", gender)
+
+  # create column
+  classes <- merge(temp, classes, by = "ID_etab_class", all.y = T)
+  }
+}
+
+# clean memory
+rm(temp, synthetic_grades)
+
+# check dimension
+dim(classes)
+
+
+```
+
+
+```{r}
+
+synthetic_grades <- c("T1_Lang_Rank", "T2_Lang_Rank", "T3_Lang_Rank")
+
+for (grade in synthetic_grades){
+  for (gender in c("Boys", "Girls")){
+    temp <- data_depp[data_depp$Sexe == gender, c("ID_etab_class", grade)] %>%
+      group_by(ID_etab_class) %>%
+      summarise(mean = mean(!!as.name(grade)))
+
+  # Name it accordingly
+  names(temp)[names(temp) == "mean"] <- paste0("mean_", grade, "_", gender)
+
+  # create column
+  classes <- merge(temp, classes, by = "ID_etab_class", all.y = T)
+  }
+}
+
+rm(temp, synthetic_grades)
+
+```
+
+
+```{r}
+
+synthetic_grades <- c("T1_Math_Rank", "T2_Math_Rank", "T3_Math_Rank")
+
+for (grade in synthetic_grades){
+  for (gender in c("Boys", "Girls")){
+    temp <- data_depp[data_depp$Sexe == gender, c("ID_etab_class", grade)] %>%
+      group_by(ID_etab_class) %>%
+      summarise(mean = mean(!!as.name(grade)))
+
+  # Name it accordingly
+  names(temp)[names(temp) == "mean"] <- paste0("mean_", grade, "_", gender)
+
+  # create column
+  classes <- merge(temp, classes, by = "ID_etab_class", all.y = T)
+  }
+}
+
+rm(temp, synthetic_grades)
+
+
+```
+
+# Create difference in mean for girls and boy
+
+For example D_T1_Math is the difference of mean of boys - girls
+This creates 6 additional columns.
+
+For example D_T1_Math_Rank is the difference of mean_Rank of boys - girls
+This creates 6 additional columns.
+
+```{r}
+
+synthetic_grades <- c("T1_Math", "T2_Math", "T3_Math",
+                      "T1_Language", "T2_Language", "T3_Language")
+
+for (grade in synthetic_grades){
+  
+  classes[, paste0("D_", grade)] <- classes[, paste0("mean_", grade, "_Boys")] - classes[, paste0("mean_", grade, "_Girls")]
+  
+  # sanity checks
+  # assertthat::assert_that(sum(classes$boy_proportion == 1) == sum(is.na(classes[, paste0("mean_", grade, "_Girls")])))
+  # assertthat::assert_that(sum(classes$boy_proportion == 0) == sum(is.na(classes[, paste0("mean_", grade, "_Boys")])))
+    
+}
+
+rm(synthetic_grades)
+
+```
+
+
+```{r}
+
+synthetic_grades <- c("T1_Lang_Rank", "T2_Lang_Rank", "T3_Lang_Rank", "T1_Math_Rank", "T2_Math_Rank", "T3_Math_Rank")
+
+for (grade in synthetic_grades){
+  
+  classes[, paste0("D_", grade)] <- classes[, paste0("mean_", grade, "_Boys")] - classes[, paste0("mean_", grade, "_Girls")]
+  
+  # sanity checks
+  # assertthat::assert_that(sum(classes$boy_proportion == 1) == sum(is.na(classes[, paste0("mean_", grade, "_Girls")])))
+  # assertthat::assert_that(sum(classes$boy_proportion == 0) == sum(is.na(classes[, paste0("mean_", grade, "_Boys")])))
+    
+}
+
+rm(synthetic_grades)
+
+
+```
+
+
+```{r}
+# sanity check 
+
+sum(is.na(classes[, paste0("D_", grade)])) == sum(is.na(classes[, paste0("mean_", grade, "_Boys")])) + sum(is.na(classes[, paste0("mean_", grade, "_Girls")]))
+
+```
+
+
+
+# Create mean of a class for girls and boys **without** the first children per class.
+
+This adds 2 gender times 6 synthetic grades columns in percent.
+This adds 2 gender times 6 synthetic grades columns in ranks.
+
+```{r}
+
+
+synthetic_grades <- c("T1_Math", "T2_Math", "T3_Math",
+                      "T1_Language", "T2_Language", "T3_Language")
+
+for (grade in synthetic_grades){
+  for (gender in c("Boys", "Girls")){
+    temp <- data_depp[!data_depp[, paste0("first_in_", grade)] & data_depp$Sexe == gender,
+                      c("ID_etab_class", grade)] %>%
+  group_by(ID_etab_class) %>%
+  summarise(mean = mean(!!as.name(grade)))
+
+  # Name it accordingly
+  names(temp)[names(temp) == "mean"] <- paste0("mean_", grade, "_", gender, "_wo_first")
+
+  # create column
+  classes <- merge(temp, classes, by = "ID_etab_class", all.y = T)
+  }
+
+}
+# clean memory
+rm(temp, synthetic_grades)
+
+# check dimension
+dim(classes)
+
+######
+
+synthetic_grades <- c("T1_Math_Rank", "T2_Math_Rank", "T3_Math_Rank",
+                      "T1_Lang_Rank", "T2_Lang_Rank", "T3_Lang_Rank")
+
+for (grade in synthetic_grades){
+  for (gender in c("Boys", "Girls")){
+    temp <- data_depp[!data_depp[, paste0("first_in_", grade)] & data_depp$Sexe == gender,
+                      c("ID_etab_class", grade)] %>%
+  group_by(ID_etab_class) %>%
+  summarise(mean = mean(!!as.name(grade)))
+
+  # Name it accordingly
+  names(temp)[names(temp) == "mean"] <- paste0("mean_", grade, "_", gender, "_wo_first")
+
+  # create column
+  classes <- merge(temp, classes, by = "ID_etab_class", all.y = T)
+  }
+}
+
+# clean memory
+rm(temp, synthetic_grades)
+
+# check dimension
+dim(classes)
+
+
+```
+
+
+```{r}
+# # Sanity check for 2018
+# girl_wo_first_children <- data_depp[!data_depp$first_in_T1_Math & data_depp$Sexe == "Girls", c("ID_etab_class", "T1_Math")] %>%
+#   group_by(ID_etab_class) %>%
+#   summarise(mean = mean(T1_Math))
+# 
+# mean(data_depp[data_depp$ID_etab_class == "0000993518d99f92_2114bfa81bad" & !data_depp$first_in_T1_Math & data_depp$Sexe == "Girls", c("T1_Math")]) == girl_wo_first_children[girl_wo_first_children$ID_etab_class == "0000993518d99f92_2114bfa81bad", "mean"]
+```
+
+# Create difference in mean for girls and boy without first
+
+D_T1_Math_wo_first is the difference of mean of boys - girls
+This creates 6 additional columns.
+
+```{r}
+
+synthetic_grades <- c("T1_Math", "T2_Math", "T3_Math",
+                      "T1_Language", "T2_Language", "T3_Language")
+
+for (grade in synthetic_grades){
+  classes[, paste0("D_", grade, "_wo_first")] <- classes[, paste0("mean_", grade, "_Boys_wo_first")] - classes[, paste0("mean_", grade, "_Girls_wo_first")]
+
+}
+
+rm(synthetic_grades)
+
+######
+
+synthetic_grades <- c("T1_Math_Rank", "T2_Math_Rank", "T3_Math_Rank",
+                      "T1_Lang_Rank", "T2_Lang_Rank", "T3_Lang_Rank")
+
+for (grade in synthetic_grades){
+  classes[, paste0("D_", grade, "_wo_first")] <- classes[, paste0("mean_", grade, "_Boys_wo_first")] - classes[, paste0("mean_", grade, "_Girls_wo_first")]
+
+}
+
+rm(synthetic_grades)
+
+
+```
+
+
+```{r}
+# Sanity check
+# classes_check <- classes[ , c("ID_etab_class", 
+#                               "mean_T1_Math_Rank_Girls_wo_first", "mean_T1_Math_Rank_Boys_wo_first", "D_T1_Math_Rank_wo_first", 
+#                               "mean_T1_Math_Girls_wo_first", "mean_T1_Math_Boys_wo_first", "D_T1_Math_wo_first")]
+# 
+# data <- data_depp[ data_depp$ID_etab_class == "0009a980397a7bb0_bcac77ad0e85", ]
+```
+
+```{r}
+# sanity check 
+
+sum(is.na(classes[, paste0("D_", grade, "_wo_first")])) == sum(is.na(classes[, paste0("mean_", grade, "_Boys_wo_first")])) + sum(is.na(classes[, paste0("mean_", grade, "_Girls_wo_first")]))
+```
+
+```{r}
+
+plot(classes$boy_proportion, classes$D_T1_Math_Rank_wo_first)
+
+```
+
+
+# Select variables we want to keep
+
+```{r}
+
+if(ANNEE_COHORTE == 2020){
+drop <- c("sd", "test_abnormalities_Lang_T1", "test_abnormalities_Lang_T2", "test_abnormalities_Math_T1", 
+          "test_abnormalities_Math_T2", "test_abnormalities_T1", "test_abnormalities_T2", "totally_ab",
+          "class_size_abnormalities", "age_abnormality" , "CodeClasseMi","CodeEtablissementMi", "strate_Mi",
+          "ips_Mi")
+
+data_depp = data_depp[ , !(names(data_depp) %in% drop )]
+
+}
+
+```
+
+# SAVE Selections
+
+Selected classes are from 6 to 27 and selection of classes with min 2 boys and 2 girls are for
+- classes
+- joined
+- joined_n 
+- joined30
+- joined30_n
+
+But not for data_depp : no selection 
+
+# SAVE classes
+
+```{r}
+
+# Here classes contain at least 6 and maximum 27 children per class
+# And
+# Here classes contain at least 2 boys or 2 girls per class
+
+
+if(IMPUTED == "non-imputed"){
+  if(NAOMIT == "True"){
+save(classes, file = paste0("./data/cohort_",  ANNEE_COHORTE, "_", IMPUTED, "_classes_naomit_True.RData"))
+  } else if (NAOMIT == "False"){
+save(classes, file = paste0("./data/cohort_",  ANNEE_COHORTE, "_", IMPUTED, "_classes_naomit_False.RData"))
+    }
+}
+
+if(IMPUTED == "imputed"){
+save(classes, file = paste0("./data/cohort_", ANNEE_COHORTE, "_", IMPUTED, "_classes.RData"))
+} 
+
+```
+
+
+# SAVE joined
+
+- data_depp did not exclude any elements (as it is registered in after_2_processing)
+- classes excluded classes <= 2 boys and classes <= 2 girls + excluded  classes < 5 and classes > 27
+- this is why dim(data_depp) and dim(joined) differ !
+
+```{r}
+# remove duplicated columns to avoid .x and .y columns
+dim(data_depp)
+data_depp <- subset(data_depp, select = -c(Categ_Etab_CP, Taille_Classe, Taille_Classe_Cat, Taille_Ecole, IPS_Etab_CP))
+dim(data_depp)
+
+# merge
+joined <- merge(classes, data_depp, by = "ID_etab_class")
+
+# save
+
+if(IMPUTED == "non-imputed"){
+  if(NAOMIT == "True"){
+save(joined, file = paste0("./data/cohort_",  ANNEE_COHORTE, "_", IMPUTED, "_joined_naomit_True.RData"))
+  } else if (NAOMIT == "False"){
+save(joined, file = paste0("./data/cohort_",  ANNEE_COHORTE, "_", IMPUTED, "_joined_naomit_False.RData"))
+    }
+}
+
+if(IMPUTED == "imputed"){
+save(joined, file = paste0("./data/cohort_", ANNEE_COHORTE, "_", IMPUTED, "_joined.RData"))
+} 
+```
+
+# SAVE joined_n
+
+```{r}
+# Joined_n : Decision with Benedict to take off children who are in advance or late, as they are very different from the others, while keeping variables with mean per class with their mean.
+
+joined_n <- joined[joined$Age_CP >= AGE_PRECOCE & joined$Age_CP <= AGE_RETARD,]
+
+# Save Joined_n
+
+if(IMPUTED == "non-imputed"){
+  if(NAOMIT == "True"){
+save(joined_n, file = paste0("./data/cohort_",  ANNEE_COHORTE, "_", IMPUTED, "_joined_n_naomit_True.RData"))
+  } else if (NAOMIT == "False"){
+save(joined_n, file = paste0("./data/cohort_",  ANNEE_COHORTE, "_", IMPUTED, "_joined_n_naomit_False.RData"))
+    }
+}
+
+if(IMPUTED == "imputed"){
+save(joined_n, file = paste0("./data/cohort_", ANNEE_COHORTE, "_", IMPUTED, "_joined_n.RData"))
+} 
+
+```
+
+# SAVE Joined30 
+
+= Select only classes with minimum of 30% of boys and 30% of girls 
+
+```{r}
+
+if(IMPUTED == "non-imputed"){
+  if(NAOMIT == "True"){
+    
+joined30 <- joined[(joined$boy_proportion >= 0.30) & (joined$boy_proportion <= 0.70) , ]
+save(joined30, file = paste0("./data/cohort_",  ANNEE_COHORTE, "_non-imputed_joined30_naomit_True.RData"))
+
+  } else if (NAOMIT == "False"){
+    
+joined30 <- joined[(joined$boy_proportion >= 0.30) & (joined$boy_proportion <= 0.70) , ]
+save(joined30, file = paste0("./data/cohort_", ANNEE_COHORTE,"_non-imputed_joined30_naomit_False.RData"))
+
+  }
+}
+
+if(IMPUTED == "imputed"){
+  
+joined30 <- joined[(joined$boy_proportion >= 0.30) & (joined$boy_proportion <= 0.70) , ]
+save(joined30, file = paste0("./data/cohort_",  ANNEE_COHORTE, "_imputed_joined30.RData"))
+
+} 
+
+
+```
+
+# SAVE Joined30_n
+
+```{r}
+
+if(IMPUTED == "non-imputed"){
+  if(NAOMIT == "True"){
+    
+joined30_n <- joined_n [ (joined_n$boy_proportion >= 0.30) & (joined_n$boy_proportion <= 0.70) , ]
+save(joined30_n, file = paste0("./data/cohort_",  ANNEE_COHORTE, "_non-imputed_joined30_n_naomit_True.RData"))
+
+  } else if (NAOMIT == "False"){
+    
+joined30_n <- joined_n [ (joined_n$boy_proportion >= 0.30) & (joined_n$boy_proportion <= 0.70) , ]
+save(joined30_n, file = paste0("./data/cohort_", ANNEE_COHORTE,"_non-imputed_joined30_n_naomit_False.RData"))
+
+  }
+}
+
+if(IMPUTED == "imputed"){
+  
+joined30_n <- joined_n [ (joined_n$boy_proportion >= 0.30) & (joined_n$boy_proportion <= 0.70) , ]
+save(joined30_n, file = paste0("./data/cohort_",  ANNEE_COHORTE, "_imputed_joined30_n.RData"))
+
+} 
+
+
+```
+
