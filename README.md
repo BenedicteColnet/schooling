@@ -13,10 +13,10 @@ This repository contains the code used for data treatment and analysis of the pa
 
 - `3_Article_create_classes.Rmd` contains the script to generate a data set with covariates averaged on each class.
 
-- `4_Article_Graph_Finaux_1.rmd`, `4_Article_Graph_Finaux_2.rmd`, `6_Article_Graph_Finaux_3.rmd`, `9_Matching_plots.Rmd` contains the scripts to plot the Figures of the article.
+- `4_Article_Graph_Finaux_1.rmd`, `4_Article_Graph_Finaux_2.rmd`, `6_Article_Graph_Finaux_3.rmd`, `9_Matching_plots.Rmd` contain the scripts to plot the Figures of the article.
 
-- `7_Article_Data_Modeles_Final_VF.Rmd` and `8_Article_Multini_Math_Final_VF.Rmd` contains the model
+- `7_Article_Data_Modeles_Final_VF.Rmd` and `8_Article_Multini_Math_Final_VF.Rmd` contain the linear and multivariate models.
 
-- `Matching_script.R` contains the matching procedure (as it takes time to run on a typical personal computer, matching was launched on clusters, and then results were analyzed through `9_Matching_plots.Rmd`)
+- `Matching_script.R` contains the matching procedure (as it takes time to run on a typical personal computer, matching was launched on clusters, and then results were analyzed through `9_Matching_plots.Rmd`).
 
 For any questions, please reach out one of the authors.
